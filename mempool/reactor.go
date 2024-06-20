@@ -73,7 +73,7 @@ func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
-	memR.router = newGossipRouter()
+	memR.router = newGossipRouter(memR.config)
 	return nil
 }
 
@@ -436,6 +436,8 @@ type p2pIDSet = map[nodekey.ID]struct{}
 
 // TODO: move to its own file.
 type gossipRouter struct {
+	config *cfg.MempoolConfig
+
 	// A set of `source -> target` routes that are disabled for disseminating transactions. Source
 	// and target are node IDs.
 	disabledRoutes map[nodekey.ID]p2pIDSet
@@ -446,8 +448,9 @@ type gossipRouter struct {
 	blockHaveTx atomic.Bool
 }
 
-func newGossipRouter() *gossipRouter {
+func newGossipRouter(config *cfg.MempoolConfig) *gossipRouter {
 	return &gossipRouter{
+		config:         config,
 		disabledRoutes: make(map[nodekey.ID]p2pIDSet),
 	}
 }
@@ -546,12 +549,6 @@ func (r *gossipRouter) incDuplicateTxs() {
 	r.duplicate++
 }
 
-const (
-	targetRedundancy      = 1
-	targetRedundancySlack = 10  // expressed as % of targetRedundancy
-	txsPerAdjustment      = 500 // We probably need to make this bigger
-)
-
 func (r *gossipRouter) incFirstTimeTx() {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -563,20 +560,20 @@ func (r *gossipRouter) adjustRedundancy(logger log.Logger) (float64, bool) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	if r.first >= txsPerAdjustment {
+	if r.first >= r.config.TxsPerAdjustment {
 		sendReset := false
 		redundancy := float64(r.duplicate) / float64(r.first)
-		targetRedundancySlackAbs := float64(targetRedundancy) * float64(targetRedundancySlack) / 100.
-		if redundancy < targetRedundancy-targetRedundancySlackAbs {
+		targetRedundancyDelta := float64(r.config.TargetRedundancy) * float64(r.config.TargetRedundancyDelta) / 100.
+		if redundancy < r.config.TargetRedundancy-targetRedundancyDelta {
 			logger.Info("TX redundancy BELOW limit, increasing it",
 				"redundancy", redundancy,
-				"limit", targetRedundancy+targetRedundancySlackAbs,
+				"limit", r.config.TargetRedundancy+targetRedundancyDelta,
 			)
 			sendReset = true
-		} else if targetRedundancy+targetRedundancySlackAbs <= redundancy {
+		} else if r.config.TargetRedundancy+targetRedundancyDelta <= redundancy {
 			logger.Info("TX redundancy ABOVE limit, decreasing it",
 				"redundancy", redundancy,
-				"limit", targetRedundancy-targetRedundancySlackAbs,
+				"limit", r.config.TargetRedundancy-targetRedundancyDelta,
 			)
 			r.blockHaveTx.Store(false)
 		}
