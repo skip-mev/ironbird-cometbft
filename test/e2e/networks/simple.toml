@@ -1,3 +1,10 @@
+pbts_enable_height = 1
+pbts_update_height = -1
+prometheus = true
+load_tx_size_bytes = 4096
+load_tx_batch_size = 100
+load_tx_connections = 1
+
 [node.validator00]
 [node.validator01]
 [node.validator02]

@@ -491,7 +491,7 @@ func (mem *CListMempool) handleRecheckTxResponse(tx types.Tx) func(res *abci.Res
 		}
 
 		// If tx is invalid, remove it from the mempool and the cache.
-		if (res.Code != abci.CodeTypeOK) || postCheckErr != nil {
+		if (res.Code != abci.CodeTypeOK) || postCheckErr != nil || true {
 			// Tx became invalidated due to newly committed block.
 			mem.logger.Debug("tx is no longer valid", "tx", tx.Hash(), "res", res, "postCheckErr", postCheckErr)
 			if err := mem.RemoveTxByKey(tx.Key()); err != nil {
@@ -561,6 +561,9 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 			return txs[:len(txs)-1]
 		}
 		totalGas = newTotalGas
+		if len(txs) > 10 {
+			break
+		}
 	}
 	return txs
 }

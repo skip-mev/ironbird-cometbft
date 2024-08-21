@@ -843,9 +843,9 @@ func DefaultP2PConfig() *P2PConfig {
 		MaxNumOutboundPeers:          10,
 		PersistentPeersMaxDialPeriod: 0 * time.Second,
 		FlushThrottleTimeout:         10 * time.Millisecond,
-		MaxPacketMsgPayloadSize:      1024,    // 1 kB
-		SendRate:                     5120000, // 5 mB/s
-		RecvRate:                     5120000, // 5 mB/s
+		MaxPacketMsgPayloadSize:      1024, // 1 kB
+		SendRate:                     512000,
+		RecvRate:                     512000,
 		PexReactor:                   true,
 		SeedMode:                     false,
 		AllowDuplicateIP:             false,
@@ -1216,7 +1216,7 @@ type ConsensusConfig struct {
 func DefaultConsensusConfig() *ConsensusConfig {
 	return &ConsensusConfig{
 		WalPath:                          filepath.Join(DefaultDataDir, "cs.wal", "wal"),
-		TimeoutPropose:                   3000 * time.Millisecond,
+		TimeoutPropose:                   10000 * time.Millisecond,
 		TimeoutProposeDelta:              500 * time.Millisecond,
 		TimeoutVote:                      1000 * time.Millisecond,
 		TimeoutVoteDelta:                 500 * time.Millisecond,
