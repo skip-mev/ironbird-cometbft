@@ -17,6 +17,7 @@ import (
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/proxy"
 	"github.com/cometbft/cometbft/types"
+	cmttime "github.com/cometbft/cometbft/types/time"
 )
 
 const noSender = p2p.ID("")
@@ -645,7 +646,9 @@ func (mem *CListMempool) Update(
 
 	// Recheck txs left in the mempool to remove them if they became invalid in the new state.
 	if mem.config.Recheck {
+		start := cmttime.Now()
 		mem.recheckTxs()
+		mem.metrics.RecheckDelay.Set(cmttime.Since(start).Seconds())
 	}
 
 	// Notify if there are still txs left in the mempool.

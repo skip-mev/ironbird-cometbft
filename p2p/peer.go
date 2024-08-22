@@ -406,12 +406,17 @@ func (p *peer) metricsReporter() {
 					}
 				}
 				for chID, entry := range p.pendingMetrics.perChannelCache {
+					value := 0.
+					if entry.count > 0 {
+						value = entry.sendDelay.Seconds() / float64(entry.count)
+						entry.count = 0
+						entry.sendDelay = 0
+					}
 					p.metrics.MessageAverageSendDelay.
 						With("peer_id", string(p.ID())).
 						With("channel_id", string(chID)).
-						Set(entry.sendDelay.Seconds() / float64(entry.count))
+						Set(value)
 				}
-				p.pendingMetrics.perChannelCache = make(map[byte]*peerPendingDelayMetrics)
 			}()
 
 		case <-p.Quit():

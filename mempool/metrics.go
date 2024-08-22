@@ -44,4 +44,10 @@ type Metrics struct {
 	// Number of connections being actively used for gossiping transactions
 	// (experimental feature).
 	ActiveOutboundConnections metrics.Gauge
+
+	// Time it takes to carry out a full mempool re-check
+	RecheckDelay metrics.Gauge
+
+	// Time it takes to carry out a full Receive iteration
+	ReceiveDelay metrics.Gauge
 }
