@@ -103,7 +103,7 @@ func newMempoolWithAppAndConfig(cc proxy.ClientCreator, cfg *config.Config) (*CL
 		panic(err)
 	}
 	mp := NewCListMempool(cfg.Mempool, appConnMem, lanesInfo, 0)
-	mp.SetLogger(log.TestingLogger())
+	mp.SetLogger(*mempoolLogger("info"))
 
 	return mp, func() { os.RemoveAll(cfg.RootDir) }
 }
