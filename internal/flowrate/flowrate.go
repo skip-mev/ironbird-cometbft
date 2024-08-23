@@ -32,6 +32,8 @@ type Monitor struct {
 
 	tBytes int64         // Number of bytes expected in the current transfer
 	tLast  time.Duration // Time of the most recent transfer of at least 1 byte
+
+	tSleep time.Duration
 }
 
 // New creates a new flow control monitor. Instantaneous transfer rate is
@@ -122,6 +124,7 @@ type Status struct {
 	TimeRem  time.Duration // Estimated time to completion
 	Progress Percent       // Overall transfer progress
 	Active   bool          // Flag indicating an active transfer
+	SleepD   time.Duration
 }
 
 // Status returns current transfer status information. The returned value
@@ -139,7 +142,9 @@ func (m *Monitor) Status() Status {
 		PeakRate: round(m.rPeak),
 		BytesRem: m.tBytes - m.bytes,
 		Progress: percentOf(float64(m.bytes), float64(m.tBytes)),
+		SleepD:   m.tSleep,
 	}
+	m.tSleep = 0
 	if s.BytesRem < 0 {
 		s.BytesRem = 0
 	}
@@ -271,6 +276,7 @@ func (m *Monitor) waitNextSample(now time.Duration) time.Duration {
 		}
 		time.Sleep(d)
 		m.mu.Lock()
+		m.tSleep += d
 		now = m.update(0)
 	}
 	return now

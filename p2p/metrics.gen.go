@@ -50,6 +50,12 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "message_send_delay",
 			Help:      "Delay for send a message to a peer in a channel.",
 		}, append(labels, "peer_id", "channel_id")).With(labelsAndValues...),
+		RateLimiterDelayMs: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "rate_limiter_delay_ms",
+			Help:      "",
+		}, append(labels, "peer_id")).With(labelsAndValues...),
 	}
 }
 
@@ -61,5 +67,6 @@ func NopMetrics() *Metrics {
 		MessageSendBytesTotal:    discard.NewCounter(),
 		MessageAverageSendDelay:  discard.NewGauge(),
 		MessageSendDelay:         discard.NewGauge(),
+		RateLimiterDelayMs:       discard.NewCounter(),
 	}
 }

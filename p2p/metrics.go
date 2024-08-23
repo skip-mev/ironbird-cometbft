@@ -37,6 +37,8 @@ type Metrics struct {
 	MessageAverageSendDelay metrics.Gauge `metrics_labels:"peer_id, channel_id"`
 	// Delay for send a message to a peer in a channel.
 	MessageSendDelay metrics.Gauge `metrics_labels:"peer_id, channel_id"`
+
+	RateLimiterDelayMs metrics.Counter `metrics_labels:"peer_id"`
 }
 
 type peerPendingMetricsCache struct {

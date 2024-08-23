@@ -386,6 +386,10 @@ func (p *peer) metricsReporter() {
 				sendQueueSize += float64(chStatus.SendQueueSize)
 			}
 
+			p.metrics.RateLimiterDelayMs.
+				With("peer_id", string(p.ID())).
+				Add(status.SendMonitor.SleepD.Seconds() * 1000.0)
+
 			p.metrics.PeerPendingSendBytes.With("peer_id", string(p.ID())).Set(sendQueueSize)
 			// Report per peer, per message total bytes, since the last interval
 			func() {
