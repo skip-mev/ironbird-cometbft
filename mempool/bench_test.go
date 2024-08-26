@@ -148,10 +148,12 @@ func BenchmarkUpdateRemoteClient(b *testing.B) {
 // the consensus module, when using an async ABCI client.
 func BenchmarkUpdateWithConcurrentCheckTx(b *testing.B) {
 	mp, cleanup := newMempoolWithAsyncConnection(b)
+	mp.config.Recheck = true
 	defer cleanup()
 
-	numTxs := 1000
-	maxHeight := 1000
+	const numTxs = 5000
+	// const reapBytes = 500
+	const reapNumTxs = 10
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -162,37 +164,38 @@ func BenchmarkUpdateWithConcurrentCheckTx(b *testing.B) {
 		rr.Wait()
 	}
 
-	// A process that continuously reaps and updates the mempool, simulating creation and committing
-	// of blocks by the consensus module.
+	// Concurrently, add more transactions.
 	go func() {
 		defer wg.Done()
-
-		b.ResetTimer()
-		for h := 1; h <= maxHeight; h++ {
-			if mp.Size() == 0 {
-				break
-			}
-			b.StartTimer()
-			txs := mp.ReapMaxBytesMaxGas(1000, -1)
-			mp.PreUpdate()
-			mp.Lock()
-			err := mp.FlushAppConn() // needed to process the pending CheckTx requests and their callbacks
+		for i := numTxs + 1; i <= numTxs; i++ {
+			_, err := mp.CheckTx(kvstore.NewTxFromID(i), "")
 			require.NoError(b, err)
-			err = mp.Update(int64(h), txs, abciResponses(len(txs), abci.CodeTypeOK), nil, nil)
-			require.NoError(b, err)
-			mp.Unlock()
-			b.StopTimer()
 		}
 	}()
 
-	// Concurrently, add more transactions.
-	for i := numTxs + 1; i <= numTxs; i++ {
-		_, err := mp.CheckTx(kvstore.NewTxFromID(i), "")
+	// Reap and update the mempool simulating the creation and committing of
+	// blocks by the consensus module.
+	b.ResetTimer()
+	b.StartTimer()
+	// for i := 0; i < b.N; i++ {
+	for h := 1; h < numTxs; h++ {
+		if mp.Size() == 0 {
+			b.StopTimer()
+			break
+		}
+
+		// txs := mp.ReapMaxBytesMaxGas(reapBytes, -1)
+		txs := mp.ReapMaxTxs(reapNumTxs)
+		b.Logf("reaped %d txs at height %d\n", len(txs), h)
+
+		mp.PreUpdate()
+		mp.Lock()
+		err := mp.FlushAppConn()
 		require.NoError(b, err)
+		err = mp.Update(int64(h), txs, abciResponses(len(txs), abci.CodeTypeOK), nil, nil)
+		require.NoError(b, err)
+		mp.Unlock()
 	}
-
+	// }
 	wg.Wait()
-
-	// All added transactions should have been removed from the mempool.
-	require.Zero(b, mp.Size())
 }

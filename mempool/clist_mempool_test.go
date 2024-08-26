@@ -165,6 +165,56 @@ func checkTxs(t *testing.T, mp Mempool, count int) types.Txs {
 	return txs
 }
 
+func TestReapOrderMatchesGossipOrder(t *testing.T) {
+	app := kvstore.NewInMemoryApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	mp, cleanup := newMempoolWithApp(cc)
+	defer cleanup()
+
+	n := 11
+
+	txs := make([]types.Tx, n)
+	go func() {
+		for i := 1; i <= n; i++ {
+			tx := kvstore.NewTxFromID(i)
+			_, err := mp.CheckTx(tx, "")
+			require.NoError(t, err, err)
+		}
+	}()
+
+	for mp.Size() < n {
+		time.Sleep(time.Second)
+	}
+
+	iter := mp.NewIterator()
+	reapIter := mp.NewReapIterator()
+
+	counter := 0
+	reapedTxs := mp.ReapMaxTxs(n)
+	for counter < n {
+		entry := <-iter.WaitNextCh()
+		if entry == nil {
+			continue
+		}
+		tx := entry.Tx()
+
+		txLocalReap := reapIter.Next().Value.(*mempoolTx).tx
+		txs[counter] = tx
+		txReaped := reapedTxs[counter]
+
+		require.True(t, bytes.Equal(tx, txLocalReap))
+		require.True(t, bytes.Equal(tx, txReaped))
+		err := mp.Update(int64(1), txs, abciResponses(len(txs), abci.CodeTypeOK), nil, nil)
+		require.NoError(t, err)
+		counter++
+	}
+
+	require.Equal(t, n, counter)
+
+	// err := mp.Update(1, txs, abciResponses(len(txs), abci.CodeTypeOK), nil, nil)
+	// require.NoError(t, err)
+}
+
 func TestReapMaxBytesMaxGas(t *testing.T) {
 	app := kvstore.NewInMemoryApplication()
 	cc := proxy.NewLocalClientCreator(app)
