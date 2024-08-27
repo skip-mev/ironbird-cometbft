@@ -25,6 +25,7 @@ type BlockStore interface {
 
 // DataPoint contains the set of data collected for each transaction.
 type DataPoint struct {
+	Height    int64
 	Duration  time.Duration
 	BlockTime time.Time
 	Hash      []byte
@@ -72,7 +73,7 @@ func (rs *Reports) ErrorCount() int {
 	return rs.errorCount
 }
 
-func (rs *Reports) addDataPoint(id uuid.UUID, lane uint32, l time.Duration, bt time.Time, hash []byte, conns, rate, size uint64) {
+func (rs *Reports) addDataPoint(id uuid.UUID, height int64, lane uint32, l time.Duration, bt time.Time, hash []byte, conns, rate, size uint64) {
 	r, ok := rs.s[id]
 	if !ok {
 		r = Report{
@@ -85,7 +86,7 @@ func (rs *Reports) addDataPoint(id uuid.UUID, lane uint32, l time.Duration, bt t
 		}
 		rs.s[id] = r
 	}
-	r.All = append(r.All, DataPoint{Duration: l, BlockTime: bt, Hash: hash, Lane: lane})
+	r.All = append(r.All, DataPoint{Height: height, Duration: l, BlockTime: bt, Hash: hash, Lane: lane})
 	if l > r.Max {
 		r.Max = l
 	}
@@ -131,6 +132,7 @@ func (rs *Reports) addError() {
 func GenerateFromBlockStore(s BlockStore) (*Reports, error) {
 	type payloadData struct {
 		id                      uuid.UUID
+		height                  int64
 		lane                    uint32
 		l                       time.Duration
 		bt                      time.Time
@@ -139,8 +141,9 @@ func GenerateFromBlockStore(s BlockStore) (*Reports, error) {
 		err                     error
 	}
 	type txData struct {
-		tx types.Tx
-		bt time.Time
+		tx     types.Tx
+		bt     time.Time
+		height int64
 	}
 	reports := &Reports{
 		s: make(map[uuid.UUID]Report),
@@ -175,6 +178,7 @@ func GenerateFromBlockStore(s BlockStore) (*Reports, error) {
 					bt:          b.bt,
 					hash:        b.tx.Hash(),
 					id:          uuid.UUID(*idb),
+					height:      b.height,
 					lane:        p.GetLane(),
 					connections: p.GetConnections(),
 					rate:        p.GetRate(),
@@ -205,7 +209,7 @@ func GenerateFromBlockStore(s BlockStore) (*Reports, error) {
 			// transactions are used is the block one before the last.
 			cur, _ := s.LoadBlock(i)
 			for _, tx := range prev.Data.Txs {
-				txc <- txData{tx: tx, bt: cur.Time}
+				txc <- txData{tx: tx, bt: cur.Time, height: prev.Height}
 			}
 			prev = cur
 		}
@@ -216,7 +220,7 @@ func GenerateFromBlockStore(s BlockStore) (*Reports, error) {
 			reports.addError()
 			continue
 		}
-		reports.addDataPoint(pd.id, pd.lane, pd.l, pd.bt, pd.hash, pd.connections, pd.rate, pd.size)
+		reports.addDataPoint(pd.id, pd.height, pd.lane, pd.l, pd.bt, pd.hash, pd.connections, pd.rate, pd.size)
 	}
 	reports.calculateAll()
 	return reports, nil
