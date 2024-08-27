@@ -26,6 +26,26 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "size_bytes",
 			Help:      "Total size of the mempool in bytes.",
 		}, labels).With(labelsAndValues...),
+		LaneSize: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "lane_size",
+			Help:      "Number of uncommitted transactions in each lane.",
+		}, append(labels, "lane")).With(labelsAndValues...),
+		LaneBytes: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "lane_bytes",
+			Help:      "Size in bytes of each lane.",
+		}, append(labels, "lane")).With(labelsAndValues...),
+		TxDuration: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "tx_duration",
+			Help:      "Duration in ms of a transaction in mempool.",
+
+			Buckets: []float64{50, 100, 200, 500, 1000},
+		}, append(labels, "lane")).With(labelsAndValues...),
 		TxSizeBytes: prometheus.NewHistogramFrom(stdprometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
@@ -71,6 +91,9 @@ func NopMetrics() *Metrics {
 	return &Metrics{
 		Size:                      discard.NewGauge(),
 		SizeBytes:                 discard.NewGauge(),
+		LaneSize:                  discard.NewGauge(),
+		LaneBytes:                 discard.NewGauge(),
+		TxDuration:                discard.NewHistogram(),
 		TxSizeBytes:               discard.NewHistogram(),
 		FailedTxs:                 discard.NewCounter(),
 		RejectedTxs:               discard.NewCounter(),
