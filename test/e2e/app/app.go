@@ -154,8 +154,8 @@ func LaneDefinitions() (map[string]uint32, []uint32) {
 	// Map from lane name to its priority. Priority 0 is reserved. The higher
 	// the value, the higher the priority.
 	lanes := map[string]uint32{
-		"foo":       9,
-		"bar":       4,
+		"foo":       10,
+		"bar":       5,
 		defaultLane: 1,
 	}
 
