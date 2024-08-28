@@ -101,6 +101,7 @@ func toCSVRecords(rs []report.Report) [][]string {
 		connStr := strconv.FormatInt(int64(r.Connections), 10)
 		rateStr := strconv.FormatInt(int64(r.Rate), 10)
 		sizeStr := strconv.FormatInt(int64(r.Size), 10)
+		r.SortAllByDuration()
 		for i, v := range r.All {
 			res[offset+i] = []string{
 				idStr,

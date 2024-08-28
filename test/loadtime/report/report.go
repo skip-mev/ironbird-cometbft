@@ -55,6 +55,12 @@ type Report struct {
 	sum int64
 }
 
+func (r *Report) SortAllByDuration() {
+	sort.Slice(r.All, func(i, j int) bool {
+		return r.All[i].Duration < r.All[j].Duration
+	})
+}
+
 type Reports struct {
 	s map[uuid.UUID]Report
 	l []Report
