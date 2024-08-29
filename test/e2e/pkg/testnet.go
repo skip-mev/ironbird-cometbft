@@ -103,6 +103,7 @@ type Testnet struct {
 	LogFormat                                            string
 	Prometheus                                           bool
 	BlockMaxBytes                                        int64
+	SendRate                                             int64
 	VoteExtensionsEnableHeight                           int64
 	VoteExtensionsUpdateHeight                           int64
 	VoteExtensionSize                                    uint
@@ -142,6 +143,7 @@ type Node struct {
 	EnableCompanionPruning  bool
 	Seeds                   []*Node
 	PersistentPeers         []*Node
+	SendRate                int64
 	Perturbations           []Perturbation
 	SendNoLoad              bool
 	Prometheus              bool
@@ -214,6 +216,7 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 		LogFormat:                        manifest.LogFormat,
 		Prometheus:                       manifest.Prometheus,
 		BlockMaxBytes:                    manifest.BlockMaxBytes,
+		SendRate:                         manifest.SendRate,
 		VoteExtensionsEnableHeight:       manifest.VoteExtensionsEnableHeight,
 		VoteExtensionsUpdateHeight:       manifest.VoteExtensionsUpdateHeight,
 		VoteExtensionSize:                manifest.VoteExtensionSize,
@@ -286,6 +289,7 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 			GRPCProxyPort:           ind.GRPCPort,
 			GRPCPrivilegedProxyPort: ind.PrivilegedGRPCPort,
 			Mode:                    ModeValidator,
+			SendRate:                testnet.SendRate,
 			Database:                "goleveldb",
 			ABCIProtocol:            Protocol(testnet.ABCIProtocol),
 			PrivvalProtocol:         ProtocolFile,
@@ -327,6 +331,9 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 		}
 		if nodeManifest.PersistInterval != nil {
 			node.PersistInterval = *nodeManifest.PersistInterval
+		}
+		if nodeManifest.SendRate > 0 {
+			node.SendRate = nodeManifest.SendRate
 		}
 		if node.Prometheus {
 			node.PrometheusProxyPort = prometheusProxyPortGen.Next()

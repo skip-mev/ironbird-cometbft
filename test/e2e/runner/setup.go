@@ -284,6 +284,9 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 	if node.Testnet.DisablePexReactor {
 		cfg.P2P.PexReactor = false
 	}
+	if node.SendRate > 0 {
+		cfg.P2P.SendRate = node.SendRate
+	}
 
 	if node.Testnet.LogLevel != "" {
 		cfg.LogLevel = node.Testnet.LogLevel

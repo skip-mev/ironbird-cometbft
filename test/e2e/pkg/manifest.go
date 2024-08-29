@@ -106,6 +106,8 @@ type Manifest struct {
 	// value will be written to the genesis file of all nodes.
 	BlockMaxBytes int64 `toml:"block_max_bytes"`
 
+	SendRate int64 `toml:"send_rate"`
+
 	// Defines a minimum size for the vote extensions.
 	VoteExtensionSize uint `toml:"vote_extension_size"`
 
@@ -169,6 +171,8 @@ type ManifestNode struct {
 	// this defaults to all other nodes in the network. For light clients,
 	// this relates to the providers the light client is connected to.
 	PersistentPeers []string `toml:"persistent_peers"`
+
+	SendRate int64 `toml:"send_rate"`
 
 	// Database specifies the database backend: "goleveldb", "rocksdb",
 	// "pebbledb" or "badgerdb". Defaults to "goleveldb".
