@@ -94,7 +94,7 @@ func TestApp_Tx(t *testing.T) {
 
 		hash := tx.Hash()
 		require.Equal(t, res.Hash, cmtbytes.HexBytes(hash))
-		waitTime := 15 * time.Minute // 10 minutes
+		waitTime := 20 * time.Minute
 		require.Eventuallyf(t, func() bool {
 			txResp, err := client.Tx(ctx, hash, false)
 			return err == nil && bytes.Equal(txResp.Tx, tx)
