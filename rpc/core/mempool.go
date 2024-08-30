@@ -42,6 +42,7 @@ func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ct
 	resCh := make(chan *abci.CheckTxResponse, 1)
 	reqRes, err := env.Mempool.CheckTx(tx, "")
 	if err != nil {
+		env.Logger.Error("Error on BroadcastTxSync", "err", err)
 		return nil, err
 	}
 	go func() {
@@ -59,6 +60,7 @@ func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ct
 	case <-ctx.Context().Done():
 		return nil, fmt.Errorf("broadcast confirmation not received: %w", ctx.Context().Err())
 	case res := <-resCh:
+		env.Logger.Debug("BroadcastTxSync response", "res", res)
 		return &ctypes.ResultBroadcastTx{
 			Code:      res.Code,
 			Data:      res.Data,
