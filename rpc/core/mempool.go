@@ -35,7 +35,9 @@ func (env *Environment) BroadcastTxAsync(_ *rpctypes.Context, tx types.Tx) (*cty
 // the transaction result.
 // More: https://docs.cometbft.com/main/rpc/#/Tx/broadcast_tx_sync
 func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ctypes.ResultBroadcastTx, error) {
+	env.Logger.Debug("BroadcastTxSync", "msg", "received tx", "tx", tx.Hash())
 	if env.MempoolReactor.WaitSync() {
+		env.Logger.Error("Error on BroadcastTxSync", "err", "endpoint closed, catching up")
 		return nil, ErrEndpointClosedCatchingUp
 	}
 
@@ -60,7 +62,7 @@ func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ct
 	case <-ctx.Context().Done():
 		return nil, fmt.Errorf("broadcast confirmation not received: %w", ctx.Context().Err())
 	case res := <-resCh:
-		env.Logger.Debug("BroadcastTxSync response", "res", res)
+		env.Logger.Debug("BroadcastTxSync response", "log", res.Log, "tx", tx.Hash())
 		return &ctypes.ResultBroadcastTx{
 			Code:      res.Code,
 			Data:      res.Data,

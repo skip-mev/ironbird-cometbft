@@ -40,7 +40,7 @@ const (
 	suffixVoteExtHeight string = "VoteExtensionsHeight"
 	suffixPbtsHeight    string = "PbtsHeight"
 	suffixInitialHeight string = "InitialHeight"
-	txTTL               uint64 = 20 // height difference at which transactions should be invalid
+	txTTL               uint64 = 200 // height difference at which transactions should be invalid
 )
 
 // Application is an ABCI application for use by end-to-end tests. It is a
@@ -294,7 +294,7 @@ func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*a
 		time.Sleep(app.cfg.CheckTxDelay)
 	}
 
-	return &abci.CheckTxResponse{Code: kvstore.CodeTypeOK, GasWanted: 1}, nil
+	return &abci.CheckTxResponse{Code: kvstore.CodeTypeOK, GasWanted: 1, Log: fmt.Sprintf("checked tx (%v)", cmttypes.Tx(req.Tx).Hash())}, nil
 }
 
 // FinalizeBlock implements ABCI.
@@ -794,7 +794,7 @@ func (app *Application) logABCIRequest(req *abci.Request) error {
 	if err != nil {
 		return err
 	}
-	app.logger.Info(s)
+	app.logger.Info("Application ABCI Request", "req", s)
 	return nil
 }
 
