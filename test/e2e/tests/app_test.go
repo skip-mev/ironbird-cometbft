@@ -94,11 +94,11 @@ func TestApp_Tx(t *testing.T) {
 
 		hash := tx.Hash()
 		require.Equal(t, res.Hash, cmtbytes.HexBytes(hash))
-		waitTime := 20 * time.Minute
+		waitTime := 5 * time.Minute
 		require.Eventuallyf(t, func() bool {
 			txResp, err := client.Tx(ctx, hash, false)
 			return err == nil && bytes.Equal(txResp.Tx, tx)
-		}, waitTime, 10*time.Second,
+		}, waitTime, time.Second,
 			"submitted tx (%X) wasn't committed after %v", hash, waitTime,
 		)
 

@@ -31,7 +31,7 @@ func Test(testnet *e2e.Testnet, ifd *e2e.InfrastructureData) error {
 		return err
 	}
 
-	cmd := []string{"go", "test", "-count", "1", "-timeout", "30m"}
+	cmd := []string{"go", "test", "-count", "1", "-timeout", "15m"}
 	verbose := os.Getenv("VERBOSE")
 	if verbose == "1" {
 		cmd = append(cmd, "-v")
