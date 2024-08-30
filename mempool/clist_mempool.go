@@ -595,6 +595,7 @@ func (mem *CListMempool) Update(
 		if err := mem.RemoveTxByKey(tx.Key()); err != nil {
 			mem.logger.Debug("Committed transaction not in local mempool (not an error)",
 				"tx", tx.Hash(),
+				"height", height,
 				"error", err.Error())
 		}
 	}

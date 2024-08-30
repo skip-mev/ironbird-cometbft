@@ -152,6 +152,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		for _, txBytes := range protoTxs {
 			tx := types.Tx(txBytes)
+			memR.Logger.Debug("Check Received Tx", "tx", tx.Hash(), "sender", e.Src.ID())
 			_, err := memR.mempool.CheckTx(tx, e.Src.ID())
 			if errors.Is(err, ErrTxInCache) {
 				memR.Logger.Debug("Tx already exists in cache", "tx", tx.Hash())
