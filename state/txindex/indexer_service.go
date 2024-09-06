@@ -44,7 +44,7 @@ func (is *IndexerService) OnStart() error {
 	// Use SubscribeUnbuffered here to ensure both subscriptions does not get
 	// canceled due to not pulling messages fast enough. Cause this might
 	// sometimes happen when there are no other subscribers.
-	blockHeadersSub, err := is.eventBus.SubscribeUnbuffered(
+	blockHeadersSub, err := is.eventBus.Subscribe(
 		context.Background(),
 		subscriber,
 		types.EventQueryNewBlockHeader)
@@ -52,7 +52,7 @@ func (is *IndexerService) OnStart() error {
 		return err
 	}
 
-	txsSub, err := is.eventBus.SubscribeUnbuffered(context.Background(), subscriber, types.EventQueryTx)
+	txsSub, err := is.eventBus.Subscribe(context.Background(), subscriber, types.EventQueryTx)
 	if err != nil {
 		return err
 	}
