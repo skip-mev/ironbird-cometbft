@@ -2,6 +2,7 @@ package txindex
 
 import (
 	"context"
+	"time"
 
 	"github.com/cometbft/cometbft/libs/service"
 	"github.com/cometbft/cometbft/state/indexer"
@@ -59,6 +60,7 @@ func (is *IndexerService) OnStart() error {
 
 	go func() {
 		for {
+			time.Sleep(1 * time.Second)
 			msg := <-blockHeadersSub.Out()
 			eventDataHeader := msg.Data().(types.EventDataNewBlockHeader)
 			height := eventDataHeader.Header.Height
