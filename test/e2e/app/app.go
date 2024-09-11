@@ -287,6 +287,7 @@ func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*a
 			}, nil
 		}
 	} else {
+		app.logger.Debug("Application CheckTx", "msg", "seenTxs stored tx", "tx_hash", cmttypes.Tx.Hash(req.Tx), "store_at_height", stHeight)
 		app.seenTxs.Store(txKey, stHeight)
 	}
 
@@ -306,6 +307,10 @@ func (app *Application) FinalizeBlock(_ context.Context, req *abci.FinalizeBlock
 	}
 
 	txs := make([]*abci.ExecTxResult, len(req.Txs))
+
+	if len(req.Txs) > 0 {
+		app.logger.Debug("Application FinalizeBlock", "msg", "txs to be finalized", "num_txs", len(req.Txs), "height", req.Height)
+	}
 
 	for i, tx := range req.Txs {
 		key, value, err := parseTx(tx)
