@@ -597,11 +597,11 @@ func (mem *CListMempool) Update(
 			// Add valid committed tx to the cache (if missing).
 			added := mem.addToCache(tx)
 			if added {
-				mem.logger.Debug("added transaction to mempool cache", "tx", log.NewLazySprintf("%X", tx.Hash()),
+				mem.logger.Debug("Mempool Update", "msg", "added transaction to mempool cache", "tx", log.NewLazySprintf("%X", tx.Hash()),
 					"height", height)
 			}
 		} else {
-			mem.logger.Debug("transaction not OK trying to remove from cache", "tx", log.NewLazySprintf("%X", tx.Hash()),
+			mem.logger.Debug("Mempool Update", "msg", "transaction not OK trying to remove from cache", "tx", log.NewLazySprintf("%X", tx.Hash()),
 				"height", height)
 			mem.tryRemoveFromCache(tx)
 		}
@@ -616,11 +616,17 @@ func (mem *CListMempool) Update(
 		// Mempool after:
 		//   100
 		// https://github.com/tendermint/tendermint/issues/3322.
-		if err := mem.RemoveTxByKey(tx.Key()); err != nil {
-			mem.logger.Debug("Committed transaction not in local mempool (not an error)",
+		err := mem.RemoveTxByKey(tx.Key())
+		if err != nil {
+			mem.logger.Debug("Mempool Update", "msg", "committed transaction not in local mempool (not an error)",
 				"tx", log.NewLazySprintf("%X", tx.Hash()),
 				"height", height,
 				"error", err.Error())
+		} else {
+			mem.logger.Debug("Mempool Update",
+				"msg", "removed transaction",
+				"tx", log.NewLazySprintf("%X", tx.Hash()),
+				"height", height)
 		}
 	}
 
@@ -644,7 +650,7 @@ func (mem *CListMempool) Update(
 // recheckTxs sends all transactions in the mempool to the app for re-validation. When the function
 // returns, all recheck responses from the app have been processed.
 func (mem *CListMempool) recheckTxs() {
-	mem.logger.Debug("Recheck txs", "height", mem.height.Load(), "num-txs", mem.Size())
+	mem.logger.Debug("Mempool Recheck txs", "height", mem.height.Load(), "num-txs", mem.Size())
 
 	if mem.Size() <= 0 {
 		return
@@ -657,7 +663,9 @@ func (mem *CListMempool) recheckTxs() {
 	for e := mem.txs.Front(); e != nil; e = e.Next() {
 		tx := e.Value.(*mempoolTx).tx
 		mem.recheck.numPendingTxs.Add(1)
-
+		mem.logger.Debug("Mempool RecheckTxs",
+			"msg", "rechecking a tx",
+			"tx", log.NewLazySprintf("%X", tx.Hash()))
 		// Send CheckTx request to the app to re-validate transaction.
 		resReq, err := mem.proxyAppConn.CheckTxAsync(context.TODO(), &abci.CheckTxRequest{
 			Tx:   tx,
