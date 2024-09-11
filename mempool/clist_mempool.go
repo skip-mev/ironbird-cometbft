@@ -242,11 +242,13 @@ func (mem *CListMempool) CheckTx(tx types.Tx, sender p2p.ID) (*abcicli.ReqRes, e
 	txSize := len(tx)
 
 	if err := mem.isFull(txSize); err != nil {
+		mem.logger.Error("CheckTx mempool is full", "tx_size", txSize, "mem_tx_bytes", mem.txsBytes.Load())
 		mem.metrics.RejectedTxs.Add(1)
 		return nil, err
 	}
 
 	if txSize > mem.config.MaxTxBytes {
+		mem.logger.Error("CheckTx size check", "msg", "tx size greater than max tx bytes", "tx_size", txSize, "max_tx_bytes", mem.config.MaxTxsBytes)
 		return nil, ErrTxTooLarge{
 			Max:    mem.config.MaxTxBytes,
 			Actual: txSize,
@@ -255,16 +257,20 @@ func (mem *CListMempool) CheckTx(tx types.Tx, sender p2p.ID) (*abcicli.ReqRes, e
 
 	if mem.preCheck != nil {
 		if err := mem.preCheck(tx); err != nil {
+			mem.logger.Error("CheckTx preCheck error", "err", err.Error())
 			return nil, ErrPreCheck{Err: err}
 		}
 	}
 
 	// NOTE: proxyAppConn may error if tx buffer is full
 	if err := mem.proxyAppConn.Error(); err != nil {
+		mem.logger.Error("CheckTx proxyAppConn error", "err", err.Error())
 		return nil, ErrAppConnMempool{Err: err}
 	}
 
-	if added := mem.addToCache(tx); !added {
+	added := mem.addToCache(tx)
+	if !added {
+		mem.logger.Debug("CheckTx add to cache", "msg", "tx already in the cache, not added", "tx", log.NewLazySprintf("%X", tx.Hash()))
 		mem.metrics.AlreadyReceivedTxs.Add(1)
 		if sender != "" {
 			// Record a new sender for a tx we've already seen.
@@ -275,15 +281,18 @@ func (mem *CListMempool) CheckTx(tx types.Tx, sender p2p.ID) (*abcicli.ReqRes, e
 				memTx := elem.Value.(*mempoolTx)
 				if found := memTx.addSender(sender); found {
 					// It should not be possible to receive twice a tx from the same sender.
-					mem.logger.Error("Tx already received from peer", "tx", log.NewLazySprintf("%X", tx.Hash()), "sender", sender)
+					mem.logger.Error("CheckTx add sender", "msg", "tx already received from peer", "tx", log.NewLazySprintf("%X", tx.Hash()), "sender", sender)
 				}
 			}
+		} else {
+			mem.logger.Debug("tx send is blank", "tx", log.NewLazySprintf("%X", tx.Hash()))
 		}
 		// TODO: consider punishing peer for dups,
 		// its non-trivial since invalid txs can become valid,
 		// but they can spam the same tx with little cost to them atm.
 		return nil, ErrTxInCache
 	}
+	mem.logger.Debug("CheckTx no sender", "sender is blank", "tx", log.NewLazySprintf("%X", tx.Hash()))
 
 	reqRes, err := mem.proxyAppConn.CheckTxAsync(context.TODO(), &abci.CheckTxRequest{
 		Tx:   tx,
@@ -332,8 +341,8 @@ func (mem *CListMempool) handleCheckTxResponse(tx types.Tx, sender p2p.ID) func(
 
 		// Check again that mempool isn't full, to reduce the chance of exceeding the limits.
 		if err := mem.isFull(len(tx)); err != nil {
+			mem.logger.Error("handleCheckTxResponse mempool is full", "tx_size", len(tx), "mem_tx_bytes", mem.txsBytes.Load(), "err", err.Error())
 			mem.forceRemoveFromCache(tx) // mempool might have space later
-			mem.logger.Error(err.Error())
 			mem.metrics.RejectedTxs.Add(1)
 			return
 		}
@@ -345,6 +354,7 @@ func (mem *CListMempool) handleCheckTxResponse(tx types.Tx, sender p2p.ID) func(
 			tx:        tx,
 		}
 		if mem.addTx(&memTx, sender) {
+			mem.logger.Debug("handleCheckTxResponse addTx", "tx", log.NewLazySprintf("%X", memTx.tx.Hash()), "height", memTx.height)
 			mem.notifyTxsAvailable()
 
 			// update metrics

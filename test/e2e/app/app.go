@@ -294,7 +294,7 @@ func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*a
 		time.Sleep(app.cfg.CheckTxDelay)
 	}
 
-	return &abci.CheckTxResponse{Code: kvstore.CodeTypeOK, GasWanted: 1, Log: fmt.Sprintf("checked tx (%v)", cmttypes.Tx(req.Tx).Hash())}, nil
+	return &abci.CheckTxResponse{Code: kvstore.CodeTypeOK, GasWanted: 1, Log: fmt.Sprintf("checked tx (%X)", cmttypes.Tx(req.Tx).Hash())}, nil
 }
 
 // FinalizeBlock implements ABCI.
