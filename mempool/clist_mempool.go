@@ -468,8 +468,12 @@ func (mem *CListMempool) handleRecheckTxResponse(tx types.Tx) func(res *abci.Res
 			// Tx became invalidated due to newly committed block.
 			mem.logger.Debug("Tx is no longer valid", "tx", log.NewLazySprintf("%X", tx.Hash()), "res", res, "postCheckErr", postCheckErr)
 			if err := mem.RemoveTxByKey(tx.Key()); err != nil {
-				mem.logger.Debug("Transaction could not be removed from mempool", "err", err)
+				mem.logger.Debug("Invalid transaction could not be removed from mempool",
+					"tx", log.NewLazySprintf("%X", tx.Hash()),
+					"err", err)
 			} else {
+				mem.logger.Debug("Invalid transaction removed from mempool",
+					"tx", log.NewLazySprintf("%X", tx.Hash()))
 				// update metrics
 				mem.metrics.Size.Set(float64(mem.Size()))
 				mem.metrics.SizeBytes.Set(float64(mem.SizeBytes()))
@@ -581,8 +585,14 @@ func (mem *CListMempool) Update(
 	for i, tx := range txs {
 		if txResults[i].Code == abci.CodeTypeOK {
 			// Add valid committed tx to the cache (if missing).
-			_ = mem.addToCache(tx)
+			added := mem.addToCache(tx)
+			if added {
+				mem.logger.Debug("added transaction to mempool cache", "tx", log.NewLazySprintf("%X", tx.Hash()),
+					"height", height)
+			}
 		} else {
+			mem.logger.Debug("transaction not OK trying to remove from cache", "tx", log.NewLazySprintf("%X", tx.Hash()),
+				"height", height)
 			mem.tryRemoveFromCache(tx)
 		}
 
