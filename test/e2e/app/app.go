@@ -556,16 +556,25 @@ func (app *Application) PrepareProposal(
 			continue
 		}
 		if strings.HasPrefix(string(tx), prefixReservedKey) {
-			app.logger.Error("detected tx that should not come from the mempool", "tx", tx)
+			app.logger.Error("detected tx that should not come from the mempool", "tx", cmttypes.Tx.Hash(tx))
 			continue
 		}
 		txLen := cmttypes.ComputeProtoSizeForTxs([]cmttypes.Tx{tx})
 		if totalBytes+txLen > req.MaxTxBytes {
+			app.logger.Debug("PrepareProposal",
+				"msg", "tx cannot fit in the proposal due to max_tx_bytes",
+				"tx", cmttypes.Tx.Hash(tx),
+				"tx_size", txLen,
+				"height", req.Height)
 			break
 		}
 		totalBytes += txLen
 		// Coherence: No need to call parseTx, as the check is stateless and has been performed by CheckTx
 		txs = append(txs, tx)
+		app.logger.Debug("PrepareProposal",
+			"msg", "added transaction to txs",
+			"tx", cmttypes.Tx.Hash(tx),
+			"height", req.Height)
 	}
 
 	if app.cfg.PrepareProposalDelay != 0 {
@@ -591,18 +600,27 @@ func (app *Application) ProcessProposal(_ context.Context, req *abci.ProcessProp
 	for _, tx := range req.Txs {
 		k, v, err := parseTx(tx)
 		if err != nil {
-			app.logger.Error("malformed transaction in ProcessProposal", "tx", tx, "err", err)
+			app.logger.Error("ProcessProposal", "msg", "malformed transaction in ProcessProposal",
+				"tx", cmttypes.Tx.Hash(tx),
+				"err", err.Error(),
+				"height", req.Height)
 			return &abci.ProcessProposalResponse{Status: abci.PROCESS_PROPOSAL_STATUS_REJECT}, nil
 		}
 		switch {
 		case areExtensionsEnabled && k == voteExtensionKey:
 			// Additional check for vote extension-related txs
 			if err := app.verifyExtensionTx(req.Height, v); err != nil {
-				app.logger.Error("vote extension transaction failed verification, rejecting proposal", k, v, "err", err)
+				app.logger.Error("ProcessProposal",
+					"msg", "vote extension transaction failed verification, rejecting proposal",
+					"tx_key",
+					k, "tx_value",
+					v,
+					"err", err.Error(),
+					"height", req.Height)
 				return &abci.ProcessProposalResponse{Status: abci.PROCESS_PROPOSAL_STATUS_REJECT}, nil
 			}
 		case strings.HasPrefix(k, prefixReservedKey):
-			app.logger.Error("key prefix %q is reserved and cannot be used in transactions, rejecting proposal", k)
+			app.logger.Error("ProcessProposal", "msg", "key prefix %q is reserved and cannot be used in transactions, rejecting proposal", "tx_key", k, "height", req.Height)
 			return &abci.ProcessProposalResponse{Status: abci.PROCESS_PROPOSAL_STATUS_REJECT}, nil
 		}
 	}
@@ -676,7 +694,7 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.VerifyV
 	}
 	// We don't allow vote extensions to be optional
 	if len(req.VoteExtension) == 0 {
-		app.logger.Error("received empty vote extension")
+		app.logger.Error("VerifyVoteExtension", "msg", "received empty vote extension", "height", req.Height)
 		return &abci.VerifyVoteExtensionResponse{
 			Status: abci.VERIFY_VOTE_EXTENSION_STATUS_REJECT,
 		}, nil
@@ -684,7 +702,7 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.VerifyV
 
 	num, err := parseVoteExtension(app.cfg, req.VoteExtension)
 	if err != nil {
-		app.logger.Error("failed to parse vote extension", "vote_extension", hex.EncodeToString(req.VoteExtension[:4]), "err", err)
+		app.logger.Error("VerifyVoteExtension", "msg", "failed to parse vote extension", "vote_extension", hex.EncodeToString(req.VoteExtension[:4]), "err", err, "height", req.Height)
 		return &abci.VerifyVoteExtensionResponse{
 			Status: abci.VERIFY_VOTE_EXTENSION_STATUS_REJECT,
 		}, nil

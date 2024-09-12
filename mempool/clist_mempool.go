@@ -535,6 +535,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 
 		// Check total size requirement
 		if maxBytes > -1 && runningSize+dataSize > maxBytes {
+			mem.logger.Debug("ReapMaxBytesMaxGas", "msg", "reached max bytes capacity", "max_bytes", maxBytes, "total_bytes", runningSize+dataSize)
 			return txs[:len(txs)-1]
 		}
 
@@ -546,6 +547,7 @@ func (mem *CListMempool) ReapMaxBytesMaxGas(maxBytes, maxGas int64) types.Txs {
 		// must be non-negative, it follows that this won't overflow.
 		newTotalGas := totalGas + memTx.gasWanted
 		if maxGas > -1 && newTotalGas > maxGas {
+			mem.logger.Debug("ReapMaxBytesMaxGas", "msg", "reached max gas capacity", "max_gas", maxGas, "total_gas", newTotalGas)
 			return txs[:len(txs)-1]
 		}
 		totalGas = newTotalGas
@@ -565,6 +567,7 @@ func (mem *CListMempool) ReapMaxTxs(max int) types.Txs {
 	txs := make([]types.Tx, 0, cmtmath.MinInt(mem.txs.Len(), max))
 	for e := mem.txs.Front(); e != nil && len(txs) <= max; e = e.Next() {
 		memTx := e.Value.(*mempoolTx)
+		mem.logger.Debug("ReapMaxTxs", "msg", "reaped transaction", "tx", log.NewLazySprintf("%X", memTx.tx.Hash()), "tx_height", memTx.Height())
 		txs = append(txs, memTx.tx)
 	}
 	return txs
