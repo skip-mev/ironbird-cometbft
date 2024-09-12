@@ -155,6 +155,7 @@ func NewApplication(cfg *Config) (*Application, error) {
 	}
 
 	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+	logger.With("module", "app")
 	logger.Info("Application started!")
 
 	return &Application{
@@ -173,6 +174,14 @@ func (app *Application) Info(context.Context, *abci.InfoRequest) (*abci.InfoResp
 	}
 
 	height, hash := app.state.Info()
+
+	app.logger.Debug("Info",
+		"msg", "invoked ABCI Info",
+		"version", version.ABCIVersion,
+		"app_version", appVersion,
+		"last_block_height", int64(height),
+		"last_block_app_hash", hash)
+
 	return &abci.InfoResponse{
 		Version:          version.ABCIVersion,
 		AppVersion:       appVersion,
@@ -263,9 +272,15 @@ func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*a
 		return nil, err
 	}
 
+	stHeight, _ := app.state.Info()
 	key, _, err := parseTx(req.Tx)
 	if err != nil || key == prefixReservedKey {
-		//nolint:nilerr
+		app.logger.Error("CheckTx",
+			"msg", "error parsing tx or use of reserved key",
+			"tx", cmttypes.Tx.Hash(req.Tx),
+			"key", key,
+			"height", stHeight,
+			"err", err.Error())
 		return &abci.CheckTxResponse{
 			Code: kvstore.CodeTypeEncodingError,
 			Log:  err.Error(),
@@ -273,13 +288,13 @@ func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*a
 	}
 
 	txKey := cmttypes.Tx(req.Tx).Key()
-	stHeight, _ := app.state.Info()
+
 	if txHeight, ok := app.seenTxs.Load(txKey); ok {
 		if stHeight < txHeight.(uint64) {
 			panic(fmt.Sprintf("txHeight is less than current height; txHeight %v, height %v", txHeight, stHeight))
 		}
 		if stHeight > txHeight.(uint64)+txTTL {
-			app.logger.Debug("Application CheckTx", "msg", "transaction expired", "tx_hash", cmttypes.Tx.Hash(req.Tx), "seen_height", txHeight, "current_height", stHeight, "tx_ttl", txTTL)
+			app.logger.Debug("CheckTx", "msg", "transaction expired", "tx_hash", cmttypes.Tx.Hash(req.Tx), "seen_height", txHeight, "current_height", stHeight, "tx_ttl", txTTL)
 			app.seenTxs.Delete(txKey)
 			return &abci.CheckTxResponse{
 				Code: kvstore.CodeTypeExpired,
@@ -287,8 +302,8 @@ func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*a
 			}, nil
 		}
 	} else {
-		app.logger.Debug("Application CheckTx", "msg", "seenTxs stored tx", "tx_hash", cmttypes.Tx.Hash(req.Tx), "store_at_height", stHeight)
 		app.seenTxs.Store(txKey, stHeight)
+		app.logger.Debug("CheckTx", "msg", "seenTxs stored tx", "tx", cmttypes.Tx.Hash(req.Tx), "store_at_height", stHeight)
 	}
 
 	if app.cfg.CheckTxDelay != 0 {
@@ -309,26 +324,39 @@ func (app *Application) FinalizeBlock(_ context.Context, req *abci.FinalizeBlock
 	txs := make([]*abci.ExecTxResult, len(req.Txs))
 
 	if len(req.Txs) > 0 {
-		app.logger.Debug("Application FinalizeBlock", "msg", "txs to be finalized", "num_txs", len(req.Txs), "height", req.Height)
+		app.logger.Debug("FinalizeBlock", "msg", "txs to be finalized", "num_txs", len(req.Txs), "height", req.Height)
 	}
 
 	for i, tx := range req.Txs {
 		key, value, err := parseTx(tx)
 		if err != nil {
+			app.logger.Error("FinalizeBlock",
+				"msg", "error parsing tx",
+				"tx", cmttypes.Tx.Hash(tx),
+				"height", req.Height,
+				"err", err.Error())
 			panic(err) // shouldn't happen since we verified it in CheckTx and ProcessProposal
 		}
 		if key == prefixReservedKey {
+			app.logger.Error("FinalizeBlock",
+				"msg", "error parsing tx, reserved key",
+				"tx", cmttypes.Tx.Hash(tx),
+				"height", req.Height)
 			panic(fmt.Errorf("detected a transaction with key %q; this key is reserved and should have been filtered out", prefixReservedKey))
 		}
 		app.state.Set(key, value)
 
 		app.seenTxs.Delete(cmttypes.Tx(tx).Key())
+		app.logger.Debug("FinalizeBlock",
+			"msg", "seenTxs stored tx", ""+
+				"tx", cmttypes.Tx.Hash(tx),
+			"height", req.Height)
 
 		txs[i] = &abci.ExecTxResult{Code: kvstore.CodeTypeOK}
 	}
 
 	for _, ev := range req.Misbehavior {
-		app.logger.Info("Misbehavior. Slashing validator",
+		app.logger.Info("FinalizeBlock", "msg", "Misbehavior. Slashing validator",
 			"validator_address", ev.GetValidator().Address,
 			"type", ev.GetType(),
 			"height", ev.GetHeight(),
@@ -339,6 +367,10 @@ func (app *Application) FinalizeBlock(_ context.Context, req *abci.FinalizeBlock
 
 	valUpdates, err := app.validatorUpdates(uint64(req.Height))
 	if err != nil {
+		app.logger.Error("FinalizeBlock",
+			"msg", "error updating validator",
+			"height", req.Height,
+			"err", err.Error())
 		panic(err)
 	}
 
