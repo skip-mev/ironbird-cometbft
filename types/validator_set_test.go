@@ -1726,32 +1726,42 @@ func TestValidatorSet_BlockingChain(t *testing.T) {
 			nil,
 		},
 		{
-			"2 validators, only 1 blocking",
+			"2 validators, only 1 blocking (1)",
 			[]testVal{{"v1", 1}, {"v2", 3}},
 			[]string{"v2"},
 		},
 		{
-			"2 validators, only 1 blocking, high power, borderline 1 - v1 blocking",
+			"2 validators, only 1 blocking (2)",
+			[]testVal{{"v1", 2}, {"v2", 5}},
+			[]string{"v2"},
+		},
+		{
+			"2 validators, 2 blocking",
+			[]testVal{{"v1", 3}, {"v2", 4}},
+			[]string{"v1", "v2"},
+		},
+		{
+			"2 validators, only 1 blocking, high power, borderline (1) - v1 blocking",
 			[]testVal{{"v1", 3333}, {"v2", 6666}},
 			[]string{"v1", "v2"},
 		},
 		{
-			"2 validators, only 1 blocking, high power, borderline 2  - v1 non-blocking",
+			"2 validators, only 1 blocking, high power, borderline (2)  - v1 non-blocking",
 			[]testVal{{"v1", 3332}, {"v2", 6666}},
 			[]string{"v2"},
 		},
 		{
-			"2 validators, only 1 blocking, high power, borderline 3  - v1 non-blocking",
+			"2 validators, only 1 blocking, high power, borderline (3)  - v1 non-blocking",
 			[]testVal{{"v1", 3332}, {"v2", 6665}},
 			[]string{"v2"},
 		},
 		{
-			"2 validators, only 1 blocking, high power, borderline 3  - v1 blocking",
+			"2 validators, only 1 blocking, high power, borderline (4)  - v1 blocking",
 			[]testVal{{"v1", 3332}, {"v2", 6664}},
 			[]string{"v1", "v2"},
 		},
 		{
-			"2 validators, only 1 blocking, high power, borderline 4  - v1 blocking",
+			"2 validators, only 1 blocking, high power, borderline (5) - v1 blocking",
 			[]testVal{{"v1", 3332}, {"v2", 6663}},
 			[]string{"v1", "v2"},
 		},
