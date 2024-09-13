@@ -155,9 +155,9 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Logger.Debug("Check Received Tx", "tx", tx.Hash(), "sender", e.Src.ID())
 			_, err := memR.mempool.CheckTx(tx, e.Src.ID())
 			if errors.Is(err, ErrTxInCache) {
-				memR.Logger.Debug("Tx already exists in cache", "tx", tx.Hash())
+				memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", tx.Hash()))
 			} else if err != nil {
-				memR.Logger.Info("Could not check tx", "tx", tx.Hash(), "err", err)
+				memR.Logger.Info("Could not check tx", "tx", log.NewLazySprintf("%X", tx.Hash()), "err", err)
 			}
 		}
 	default:
@@ -196,6 +196,9 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 	// If the node is catching up, don't start this routine immediately.
 	if memR.WaitSync() {
+		memR.Logger.Debug("broadcastTxRoutine",
+			"msg", "mempool waiting, node is catching up",
+			"peer_id", peer.ID())
 		select {
 		case <-memR.waitSyncCh:
 			// EnableInOutTxs() has set WaitSync() to false.
@@ -207,6 +210,9 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 	for {
 		// In case of both next.NextWaitChan() and peer.Quit() are variable at the same time
 		if !memR.IsRunning() || !peer.IsRunning() {
+			memR.Logger.Debug("broadcastTxRoutine",
+				"msg", "mempool reactor or peer are not running yet",
+				"peer_id", peer.ID())
 			return
 		}
 
@@ -217,11 +223,18 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			select {
 			case <-memR.mempool.TxsWaitChan(): // Wait until a tx is available
 				if next = memR.mempool.TxsFront(); next == nil {
+					memR.Logger.Debug("broadcastTxRoutine",
+						"msg", "tx not available")
 					continue
 				}
 			case <-peer.Quit():
+				memR.Logger.Debug("broadcastTxRoutine",
+					"msg", "peer quit",
+					"peer_id", peer.ID())
 				return
 			case <-memR.Quit():
+				memR.Logger.Debug("broadcastTxRoutine",
+					"msg", "mempool quit")
 				return
 			}
 		}
@@ -234,6 +247,12 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			// different every time due to us using a map. Sometimes other reactors
 			// will be initialized before the consensus reactor. We should wait a few
 			// milliseconds and retry.
+			memR.Logger.Debug("broadcastTxRoutine",
+				"msg", "peer has no state yet",
+				"peer_state", peerState,
+				"peer_id", peer.ID(),
+				"peer_status", peer.Status(),
+				"peer_node", peer.NodeInfo())
 			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
 			continue
 		}
@@ -246,6 +265,11 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		// [RFC 103]: https://github.com/cometbft/cometbft/pull/735
 		memTx := next.Value.(*mempoolTx)
 		if peerState.GetHeight() < memTx.Height()-1 {
+			memR.Logger.Debug("broadcastTxRoutine",
+				"msg", "peer is lagging behind by more than one block",
+				"peer_height", peerState.GetHeight(),
+				"tx_height", memTx.Height(),
+				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
 			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
 			continue
 		}
@@ -255,6 +279,9 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 		// Do not send this transaction if we receive it from peer.
 		if memTx.isSender(peer.ID()) {
+			memR.Logger.Debug("broadcastTxRoutine",
+				"msg", "peer is sender, do not send tx",
+				"peer_ID", peer.ID())
 			continue
 		}
 
@@ -263,6 +290,11 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
 		})
 		if !success {
+			memR.Logger.Debug("broadcastTxRoutine",
+				"msg", "peer failed to send message",
+				"channel_id", MempoolChannel,
+				"tx_height", memTx.Height(),
+				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
 			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
 			continue
 		}

@@ -405,6 +405,8 @@ func (c *MConnection) TrySend(chID byte, msgBytes []byte) bool {
 		case c.send <- struct{}{}:
 		default:
 		}
+	} else {
+		c.Logger.Debug("TrySend", "msg", "failed to try to send bytes", "channel", chID, "conn", c, "msgBytes", log.NewLazySprintf("%X", msgBytes))
 	}
 
 	return ok

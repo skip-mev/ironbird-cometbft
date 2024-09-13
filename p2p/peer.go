@@ -278,7 +278,7 @@ func (p *peer) send(chID byte, msg proto.Message, sendFunc func(byte, []byte) bo
 	}
 	msgBytes, err := proto.Marshal(msg)
 	if err != nil {
-		p.Logger.Error("marshaling message to send", "error", err)
+		p.Logger.Error("marshaling message to send", "error", err.Error())
 		return false
 	}
 	res := sendFunc(chID, msgBytes)

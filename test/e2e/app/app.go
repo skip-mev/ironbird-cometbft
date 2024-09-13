@@ -348,8 +348,8 @@ func (app *Application) FinalizeBlock(_ context.Context, req *abci.FinalizeBlock
 
 		app.seenTxs.Delete(cmttypes.Tx(tx).Key())
 		app.logger.Debug("FinalizeBlock",
-			"msg", "seenTxs stored tx", ""+
-				"tx", cmttypes.Tx.Hash(tx),
+			"msg", "seenTxs stored tx",
+			"tx", cmttypes.Tx.Hash(tx),
 			"height", req.Height)
 
 		txs[i] = &abci.ExecTxResult{Code: kvstore.CodeTypeOK}
