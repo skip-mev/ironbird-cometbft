@@ -223,18 +223,18 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			select {
 			case <-memR.mempool.TxsWaitChan(): // Wait until a tx is available
 				if next = memR.mempool.TxsFront(); next == nil {
-					memR.Logger.Debug("broadcastTxRoutine",
-						"msg", "tx not available")
+					// memR.Logger.Debug("broadcastTxRoutine",
+					//	"msg", "tx not available")
 					continue
 				}
 			case <-peer.Quit():
-				memR.Logger.Debug("broadcastTxRoutine",
-					"msg", "peer quit",
-					"peer_id", peer.ID())
+				// memR.Logger.Debug("broadcastTxRoutine",
+				//	"msg", "peer quit",
+				//	"peer_id", peer.ID())
 				return
 			case <-memR.Quit():
-				memR.Logger.Debug("broadcastTxRoutine",
-					"msg", "mempool quit")
+				// memR.Logger.Debug("broadcastTxRoutine",
+				//	"msg", "mempool quit")
 				return
 			}
 		}
@@ -279,9 +279,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 		// Do not send this transaction if we receive it from peer.
 		if memTx.isSender(peer.ID()) {
-			memR.Logger.Debug("broadcastTxRoutine",
-				"msg", "peer is sender, do not send tx",
-				"peer_ID", peer.ID())
 			continue
 		}
 
