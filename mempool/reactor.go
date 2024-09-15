@@ -140,28 +140,28 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
 		if memR.WaitSync() {
-			memR.Logger.Debug("Ignored message received while syncing", "msg", msg)
+			memR.Logger.Debug("Mempool Reactor", "msg", "ignored message received while syncing", "msg", msg)
 			return
 		}
 
 		protoTxs := msg.GetTxs()
 		if len(protoTxs) == 0 {
-			memR.Logger.Error("Received empty Txs message from peer", "src", e.Src)
+			memR.Logger.Error("Mempool Reactor", "msg", "received empty Txs message from peer", "src", e.Src)
 			return
 		}
 
 		for _, txBytes := range protoTxs {
 			tx := types.Tx(txBytes)
-			memR.Logger.Debug("Check Received Tx", "tx", tx.Hash(), "sender", e.Src.ID())
+			memR.Logger.Debug("Mempool Reactor", "msg", "received Tx", "tx", tx.Hash(), "sender", e.Src.ID())
 			_, err := memR.mempool.CheckTx(tx, e.Src.ID())
 			if errors.Is(err, ErrTxInCache) {
-				memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", tx.Hash()))
+				memR.Logger.Debug("Mempool Reactor", "msg", "Tx already exists in cache", "tx", log.NewLazySprintf("%X", tx.Hash()))
 			} else if err != nil {
-				memR.Logger.Info("Could not check tx", "tx", log.NewLazySprintf("%X", tx.Hash()), "err", err)
+				memR.Logger.Info("Mempool Reactor", "msg", "Could not check tx", "tx", log.NewLazySprintf("%X", tx.Hash()), "err", err)
 			}
 		}
 	default:
-		memR.Logger.Error("Unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
+		memR.Logger.Error("Mempool Reactor", "msg", "unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 		memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", e.Message))
 		return
 	}
@@ -196,7 +196,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 	// If the node is catching up, don't start this routine immediately.
 	if memR.WaitSync() {
-		memR.Logger.Debug("broadcastTxRoutine",
+		memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
 			"msg", "mempool waiting, node is catching up",
 			"peer_id", peer.ID())
 		select {
@@ -210,7 +210,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 	for {
 		// In case of both next.NextWaitChan() and peer.Quit() are variable at the same time
 		if !memR.IsRunning() || !peer.IsRunning() {
-			memR.Logger.Debug("broadcastTxRoutine",
+			memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
 				"msg", "mempool reactor or peer are not running yet",
 				"peer_id", peer.ID())
 			return
@@ -247,7 +247,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			// different every time due to us using a map. Sometimes other reactors
 			// will be initialized before the consensus reactor. We should wait a few
 			// milliseconds and retry.
-			memR.Logger.Debug("broadcastTxRoutine",
+			memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
 				"msg", "peer has no state yet",
 				"peer_state", peerState,
 				"peer_id", peer.ID(),
@@ -265,7 +265,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		// [RFC 103]: https://github.com/cometbft/cometbft/pull/735
 		memTx := next.Value.(*mempoolTx)
 		if peerState.GetHeight() < memTx.Height()-1 {
-			memR.Logger.Debug("broadcastTxRoutine",
+			memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
 				"msg", "peer is lagging behind by more than one block",
 				"peer_height", peerState.GetHeight(),
 				"peer_id", peer.ID(),
@@ -290,12 +290,20 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		if !success {
 			memR.Logger.Debug("broadcastTxRoutine",
 				"msg", "peer failed to send message",
-				"channel_id", MempoolChannel,
+				"peer", peer.ID(),
+				"channel", MempoolChannel,
 				"tx_height", memTx.Height(),
 				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
 			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
 			continue
 		}
+		memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
+			"msg", "sent message",
+			"peer", peer.ID(),
+			"channel", MempoolChannel,
+			"tx_height", memTx.Height(),
+			"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
+		time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
 
 		select {
 		case <-next.NextWaitChan():

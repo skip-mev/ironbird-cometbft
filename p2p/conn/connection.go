@@ -675,7 +675,7 @@ FOR_LOOP:
 				break FOR_LOOP
 			}
 			if msgBytes != nil {
-				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes)
+				c.Logger.Debug("Received bytes", "chID", channelID, "msgBytes", msgBytes, "peer_addr", c.conn.RemoteAddr())
 				// NOTE: This means the reactor.Receive runs in the same thread as the p2p recv routine
 				c.onReceive(channelID, msgBytes)
 			}
