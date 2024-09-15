@@ -268,6 +268,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			memR.Logger.Debug("broadcastTxRoutine",
 				"msg", "peer is lagging behind by more than one block",
 				"peer_height", peerState.GetHeight(),
+				"peer_id", peer.ID(),
 				"tx_height", memTx.Height(),
 				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
 			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
