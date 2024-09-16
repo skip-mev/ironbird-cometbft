@@ -136,7 +136,7 @@ func (memR *Reactor) AddPeer(peer p2p.Peer) {
 // Receive implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) Receive(e p2p.Envelope) {
-	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
+	memR.Logger.Debug("Receive", "src", e.Src, "chId", e.ChannelID, "msg", e.Message.String())
 	switch msg := e.Message.(type) {
 	case *protomem.Txs:
 		if memR.WaitSync() {
@@ -196,13 +196,19 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 	// If the node is catching up, don't start this routine immediately.
 	if memR.WaitSync() {
-		memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
-			"msg", "mempool waiting, node is catching up",
+		memR.Logger.Debug("Mempool Reactor",
+			"msg", "broadcastTxRoutine - mempool waiting, node is catching up",
 			"peer_id", peer.ID())
 		select {
 		case <-memR.waitSyncCh:
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - WaitSync() to false",
+				"peer_id", peer.ID())
 			// EnableInOutTxs() has set WaitSync() to false.
 		case <-memR.Quit():
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - mempool quit",
+				"peer_id", peer.ID())
 			return
 		}
 	}
@@ -210,8 +216,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 	for {
 		// In case of both next.NextWaitChan() and peer.Quit() are variable at the same time
 		if !memR.IsRunning() || !peer.IsRunning() {
-			memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
-				"msg", "mempool reactor or peer are not running yet",
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - mempool reactor or peer are not running yet",
 				"peer_id", peer.ID())
 			return
 		}
@@ -228,13 +234,13 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 					continue
 				}
 			case <-peer.Quit():
-				// memR.Logger.Debug("broadcastTxRoutine",
-				//	"msg", "peer quit",
-				//	"peer_id", peer.ID())
+				memR.Logger.Debug("Mempool Reactor",
+					"msg", "broadcastTxRoutine - peer quit",
+					"peer_id", peer.ID())
 				return
 			case <-memR.Quit():
-				// memR.Logger.Debug("broadcastTxRoutine",
-				//	"msg", "mempool quit")
+				memR.Logger.Debug("Mempool Reactor",
+					"msg", "broadcastTxRoutine - mempool quit")
 				return
 			}
 		}
@@ -247,8 +253,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			// different every time due to us using a map. Sometimes other reactors
 			// will be initialized before the consensus reactor. We should wait a few
 			// milliseconds and retry.
-			memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
-				"msg", "peer has no state yet",
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - peer has no state yet",
 				"peer_state", peerState,
 				"peer_id", peer.ID(),
 				"peer_status", peer.Status(),
@@ -265,8 +271,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		// [RFC 103]: https://github.com/cometbft/cometbft/pull/735
 		memTx := next.Value.(*mempoolTx)
 		if peerState.GetHeight() < memTx.Height()-1 {
-			memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
-				"msg", "peer is lagging behind by more than one block",
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - peer is lagging behind by more than one block",
 				"peer_height", peerState.GetHeight(),
 				"peer_id", peer.ID(),
 				"tx_height", memTx.Height(),
@@ -280,6 +286,12 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 		// Do not send this transaction if we receive it from peer.
 		if memTx.isSender(peer.ID()) {
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - do not send this transaction if we receive it from peer",
+				"peer_height", peerState.GetHeight(),
+				"peer_id", peer.ID(),
+				"tx_height", memTx.Height(),
+				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
 			continue
 		}
 
@@ -288,8 +300,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
 		})
 		if !success {
-			memR.Logger.Debug("broadcastTxRoutine",
-				"msg", "peer failed to send message",
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - peer failed to send message",
 				"peer", peer.ID(),
 				"channel", MempoolChannel,
 				"tx_height", memTx.Height(),
@@ -297,8 +309,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
 			continue
 		}
-		memR.Logger.Debug("Mempool Reactor - broadcastTxRoutine",
-			"msg", "sent message",
+		memR.Logger.Debug("Mempool Reactor",
+			"msg", "broadcastTxRoutine - sent message",
 			"peer", peer.ID(),
 			"channel", MempoolChannel,
 			"tx_height", memTx.Height(),
@@ -310,8 +322,14 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			// see the start of the for loop for nil check
 			next = next.Next()
 		case <-peer.Quit():
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - peer quit",
+				"peer_height", peerState.GetHeight(),
+				"peer_id", peer.ID())
 			return
 		case <-memR.Quit():
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - mempool quit")
 			return
 		}
 	}
