@@ -152,7 +152,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 
 		for _, txBytes := range protoTxs {
 			tx := types.Tx(txBytes)
-			memR.Logger.Debug("Mempool Reactor", "msg", "received Tx", "tx", tx.Hash(), "sender", e.Src.ID())
+			memR.Logger.Debug("Mempool Reactor", "msg", "received Tx", "tx", tx.Hash(), "height", memR.mempool.height.Load(), "sender", e.Src.ID())
 			_, err := memR.mempool.CheckTx(tx, e.Src.ID())
 			if errors.Is(err, ErrTxInCache) {
 				memR.Logger.Debug("Mempool Reactor", "msg", "Tx already exists in cache", "tx", log.NewLazySprintf("%X", tx.Hash()))
@@ -286,12 +286,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 		// Do not send this transaction if we receive it from peer.
 		if memTx.isSender(peer.ID()) {
-			memR.Logger.Debug("Mempool Reactor",
-				"msg", "broadcastTxRoutine - do not send this transaction if we receive it from peer",
-				"peer_height", peerState.GetHeight(),
-				"peer_id", peer.ID(),
-				"tx_height", memTx.Height(),
-				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
 			continue
 		}
 
