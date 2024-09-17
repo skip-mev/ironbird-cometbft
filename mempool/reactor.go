@@ -11,7 +11,6 @@ import (
 
 	protomem "github.com/cometbft/cometbft/api/cometbft/mempool/v1"
 	cfg "github.com/cometbft/cometbft/config"
-	"github.com/cometbft/cometbft/internal/clist"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/p2p"
 	"github.com/cometbft/cometbft/types"
@@ -192,8 +191,6 @@ type PeerState interface {
 
 // Send new mempool txs to peer.
 func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
-	var next *clist.CElement
-
 	// If the node is catching up, don't start this routine immediately.
 	if memR.WaitSync() {
 		memR.Logger.Debug("Mempool Reactor",
@@ -213,6 +210,8 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		}
 	}
 
+	iter := memR.mempool.NewIterator()
+	var entry Entry
 	for {
 		// In case of both next.NextWaitChan() and peer.Quit() are variable at the same time
 		if !memR.IsRunning() || !peer.IsRunning() {
@@ -222,17 +221,86 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			return
 		}
 
-		// This happens because the CElement we were looking at got garbage
-		// collected (removed). That is, .NextWait() returned nil. Go ahead and
-		// start from the beginning.
-		if next == nil {
+		select {
+		case entry = <-iter.WaitNextCh():
+			// If the entry we were looking at got garbage collected (removed), try again.
+			if entry == nil {
+				continue
+			}
+		case <-peer.Quit():
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - peer quit",
+				"peer_id", peer.ID())
+			return
+		case <-memR.Quit():
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - mempool quit")
+			return
+		}
+
+		// If we suspect that the peer is lagging behind, at least by more than
+		// one block, we don't send the transaction immediately. This code
+		// reduces the mempool size and the recheck-tx rate of the receiving
+		// node. See [RFC 103] for an analysis on this optimization.
+		//
+		// [RFC 103]: https://github.com/CometBFT/cometbft/blob/main/docs/references/rfc/rfc-103-incoming-txs-when-catching-up.md
+		for {
+			// Make sure the peer's state is up to date. The peer may not have a
+			// state yet. We set it in the consensus reactor, but when we add
+			// peer in Switch, the order we call reactors#AddPeer is different
+			// every time due to us using a map. Sometimes other reactors will
+			// be initialized before the consensus reactor. We should wait a few
+			// milliseconds and retry.
+			peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
+			if ok && peerState.GetHeight()+1 >= entry.Height() {
+				memR.Logger.Debug("Mempool Reactor",
+					"msg", "broadcastTxRoutine - peer is lagging behind by more than one block",
+					"peer_height", peerState.GetHeight(),
+					"peer_id", peer.ID(),
+					"tx_height", entry.Height(),
+					"tx_hash", log.NewLazySprintf("%X", entry.Tx().Hash()))
+				break
+			}
 			select {
-			case <-memR.mempool.TxsWaitChan(): // Wait until a tx is available
-				if next = memR.mempool.TxsFront(); next == nil {
-					// memR.Logger.Debug("broadcastTxRoutine",
-					//	"msg", "tx not available")
-					continue
-				}
+			case <-time.After(PeerCatchupSleepIntervalMS * time.Millisecond):
+			case <-peer.Quit():
+				return
+			case <-memR.Quit():
+				return
+			}
+		}
+
+		// NOTE: Transaction batching was disabled due to
+		// https://github.com/tendermint/tendermint/issues/5796
+
+		// Do not send this transaction if we receive it from peer.
+		if entry.IsSender(peer.ID()) {
+			continue
+		}
+
+		for {
+			success := peer.Send(p2p.Envelope{
+				ChannelID: MempoolChannel,
+				Message:   &protomem.Txs{Txs: [][]byte{entry.Tx()}},
+			})
+			if success {
+				memR.Logger.Debug("Mempool Reactor",
+					"msg", "broadcastTxRoutine - sent message",
+					"peer", peer.ID(),
+					"channel", MempoolChannel,
+					"tx_height", entry.Height(),
+					"tx_hash", log.NewLazySprintf("%X", entry.Tx().Hash()))
+				break
+			}
+			memR.Logger.Debug("Mempool Reactor",
+				"msg", "broadcastTxRoutine - peer failed to send message",
+				"peer", peer.ID(),
+				"channel", MempoolChannel,
+				"tx_height", entry.Height(),
+				"tx_hash", log.NewLazySprintf("%X", entry.Tx().Hash()))
+
+			select {
+			case <-time.After(PeerCatchupSleepIntervalMS * time.Millisecond):
 			case <-peer.Quit():
 				memR.Logger.Debug("Mempool Reactor",
 					"msg", "broadcastTxRoutine - peer quit",
@@ -243,88 +311,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 					"msg", "broadcastTxRoutine - mempool quit")
 				return
 			}
-		}
-
-		// Make sure the peer is up to date.
-		peerState, ok := peer.Get(types.PeerStateKey).(PeerState)
-		if !ok {
-			// Peer does not have a state yet. We set it in the consensus reactor, but
-			// when we add peer in Switch, the order we call reactors#AddPeer is
-			// different every time due to us using a map. Sometimes other reactors
-			// will be initialized before the consensus reactor. We should wait a few
-			// milliseconds and retry.
-			memR.Logger.Debug("Mempool Reactor",
-				"msg", "broadcastTxRoutine - peer has no state yet",
-				"peer_state", peerState,
-				"peer_id", peer.ID(),
-				"peer_status", peer.Status(),
-				"peer_node", peer.NodeInfo())
-			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
-			continue
-		}
-
-		// If we suspect that the peer is lagging behind, at least by more than
-		// one block, we don't send the transaction immediately. This code
-		// reduces the mempool size and the recheck-tx rate of the receiving
-		// node. See [RFC 103] for an analysis on this optimization.
-		//
-		// [RFC 103]: https://github.com/cometbft/cometbft/pull/735
-		memTx := next.Value.(*mempoolTx)
-		if peerState.GetHeight() < memTx.Height()-1 {
-			memR.Logger.Debug("Mempool Reactor",
-				"msg", "broadcastTxRoutine - peer is lagging behind by more than one block",
-				"peer_height", peerState.GetHeight(),
-				"peer_id", peer.ID(),
-				"tx_height", memTx.Height(),
-				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
-			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
-			continue
-		}
-
-		// NOTE: Transaction batching was disabled due to
-		// https://github.com/tendermint/tendermint/issues/5796
-
-		// Do not send this transaction if we receive it from peer.
-		if memTx.isSender(peer.ID()) {
-			continue
-		}
-
-		success := peer.Send(p2p.Envelope{
-			ChannelID: MempoolChannel,
-			Message:   &protomem.Txs{Txs: [][]byte{memTx.tx}},
-		})
-		if !success {
-			memR.Logger.Debug("Mempool Reactor",
-				"msg", "broadcastTxRoutine - peer failed to send message",
-				"peer", peer.ID(),
-				"channel", MempoolChannel,
-				"tx_height", memTx.Height(),
-				"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
-			time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
-			continue
-		}
-		memR.Logger.Debug("Mempool Reactor",
-			"msg", "broadcastTxRoutine - sent message",
-			"peer", peer.ID(),
-			"channel", MempoolChannel,
-			"tx_height", memTx.Height(),
-			"tx_hash", log.NewLazySprintf("%X", memTx.tx.Hash()))
-		time.Sleep(PeerCatchupSleepIntervalMS * time.Millisecond)
-
-		select {
-		case <-next.NextWaitChan():
-			// see the start of the for loop for nil check
-			next = next.Next()
-		case <-peer.Quit():
-			memR.Logger.Debug("Mempool Reactor",
-				"msg", "broadcastTxRoutine - peer quit",
-				"peer_height", peerState.GetHeight(),
-				"peer_id", peer.ID())
-			return
-		case <-memR.Quit():
-			memR.Logger.Debug("Mempool Reactor",
-				"msg", "broadcastTxRoutine - mempool quit")
-			return
 		}
 	}
 }
