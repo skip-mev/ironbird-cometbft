@@ -24,9 +24,12 @@ func (env *Environment) BroadcastTxAsync(_ *rpctypes.Context, tx types.Tx) (*cty
 	if env.MempoolReactor.WaitSync() {
 		return nil, ErrEndpointClosedCatchingUp
 	}
-	_, err := env.Mempool.CheckTx(tx, "")
+	reqRes, err := env.Mempool.CheckTx(tx, "")
 	if err != nil {
 		return nil, err
+	}
+	if reqRes.Error() != nil {
+		return nil, reqRes.Error()
 	}
 	return &ctypes.ResultBroadcastTx{Hash: tx.Hash()}, nil
 }
@@ -42,6 +45,7 @@ func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ct
 	}
 
 	resCh := make(chan *abci.CheckTxResponse, 1)
+	resErrCh := make(chan error, 1)
 	reqRes, err := env.Mempool.CheckTx(tx, "")
 	if err != nil {
 		env.Logger.Error("Error on BroadcastTxSync", "err", err)
@@ -54,13 +58,19 @@ func (env *Environment) BroadcastTxSync(ctx *rpctypes.Context, tx types.Tx) (*ct
 		select {
 		case <-ctx.Context().Done():
 		default:
-			resCh <- reqRes.Response.GetCheckTx()
+			if reqRes.Error() != nil {
+				resErrCh <- reqRes.Error()
+			} else {
+				resCh <- reqRes.Response.GetCheckTx()
+			}
 		}
 	}()
 
 	select {
 	case <-ctx.Context().Done():
 		return nil, fmt.Errorf("broadcast confirmation not received: %w", ctx.Context().Err())
+	case err := <-resErrCh:
+		return nil, fmt.Errorf("broadcast error on transaction validation: %w", err)
 	case res := <-resCh:
 		env.Logger.Debug("BroadcastTxSync response", "log", res.Log, "tx", tx.Hash())
 		return &ctypes.ResultBroadcastTx{
@@ -106,6 +116,7 @@ func (env *Environment) BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*
 
 	// Broadcast tx and wait for CheckTx result
 	checkTxResCh := make(chan *abci.CheckTxResponse, 1)
+	resErrCh := make(chan error, 1)
 	reqRes, err := env.Mempool.CheckTx(tx, "")
 	if err != nil {
 		env.Logger.Error("Error on broadcastTxCommit", "err", err)
@@ -118,13 +129,19 @@ func (env *Environment) BroadcastTxCommit(ctx *rpctypes.Context, tx types.Tx) (*
 		select {
 		case <-ctx.Context().Done():
 		default:
-			checkTxResCh <- reqRes.Response.GetCheckTx()
+			if reqRes.Error() != nil {
+				resErrCh <- reqRes.Error()
+			} else {
+				checkTxResCh <- reqRes.Response.GetCheckTx()
+			}
 		}
 	}()
 
 	select {
 	case <-ctx.Context().Done():
 		return nil, fmt.Errorf("broadcast confirmation not received: %w", ctx.Context().Err())
+	case err := <-resErrCh:
+		return nil, fmt.Errorf("broadcast error on transaction validation: %w", err)
 	case checkTxRes := <-checkTxResCh:
 		if checkTxRes.Code != abci.CodeTypeOK {
 			return &ctypes.ResultBroadcastTxCommit{
