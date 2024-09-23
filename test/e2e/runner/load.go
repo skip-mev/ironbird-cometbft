@@ -31,7 +31,7 @@ func Load(ctx context.Context, testnet *e2e.Testnet, useInternalIP bool) error {
 
 	logger.Info("load", "msg", log.NewLazySprintf("Starting transaction load (%v workers)...", workerPoolSize),
 		"tx/s", testnet.LoadTxBatchSize, "tx-bytes", testnet.LoadTxSizeBytes, "conn", testnet.LoadTxConnections,
-		"max-seconds", testnet.LoadMaxSeconds, "target-nodes", testnet.LoadTargetNodes)
+		"max-seconds", testnet.LoadMaxSeconds, "target-nodes", testnet.LoadTargetNodes, "lane-weights", testnet.LoadLaneWeights)
 	started := time.Now()
 	u := [16]byte(uuid.New()) // generate run ID on startup
 
