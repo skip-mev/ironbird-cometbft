@@ -197,7 +197,7 @@ func NewCLI() *CLI {
 		},
 	})
 
-	cli.root.AddCommand(&cobra.Command{
+	startCmd := &cobra.Command{
 		Use:   "start",
 		Short: "Starts the testnet, waiting for nodes to become available",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -210,7 +210,8 @@ func NewCLI() *CLI {
 			}
 			return Start(cmd.Context(), cli.testnet, cli.infp)
 		},
-	})
+	}
+	cli.root.AddCommand(startCmd)
 
 	cli.root.AddCommand(&cobra.Command{
 		Use:   "perturb",
@@ -237,19 +238,56 @@ func NewCLI() *CLI {
 		},
 	})
 
-	var useInternalIP bool
 	loadCmd := &cobra.Command{
 		Use:   "load",
 		Short: "Generates transaction load until the command is canceled.",
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
-			useInternalIP, err = cmd.Flags().GetBool("internal-ip")
+			useInternalIP, err := cmd.Flags().GetBool("internal-ip")
 			if err != nil {
+				return err
+			}
+			if loadRate, err := cmd.Flags().GetInt("rate"); err != nil {
+				return err
+			} else if loadRate > 0 {
+				cli.testnet.LoadTxBatchSize = loadRate
+			}
+			if loadSize, err := cmd.Flags().GetInt("size"); err != nil {
+				return err
+			} else if loadSize > 0 {
+				cli.testnet.LoadTxSizeBytes = loadSize
+			}
+			if loadConnections, err := cmd.Flags().GetInt("conn"); err != nil {
+				return err
+			} else if loadConnections > 0 {
+				cli.testnet.LoadTxConnections = loadConnections
+			}
+			if loadTime, err := cmd.Flags().GetInt("time"); err != nil {
+				return err
+			} else if loadTime > 0 {
+				cli.testnet.LoadMaxSeconds = loadTime
+			}
+			if loadTargetNodes, err := cmd.Flags().GetStringSlice("targets"); err != nil {
+				return err
+			} else if len(loadTargetNodes) > 0 {
+				cli.testnet.LoadTargetNodes = loadTargetNodes
+			}
+			if err = cli.testnet.Validate(); err != nil {
 				return err
 			}
 			return Load(context.Background(), cli.testnet, useInternalIP)
 		},
 	}
-	loadCmd.PersistentFlags().BoolVar(&useInternalIP, "internal-ip", false,
+	loadCmd.PersistentFlags().IntP("rate", "r", -1,
+		"Number of transactions generate each second on all connections). Overwrites manifest option load_tx_batch_size.")
+	loadCmd.PersistentFlags().IntP("size", "s", -1,
+		"Transaction size in bytes. Overwrites manifest option load_tx_size_bytes.")
+	loadCmd.PersistentFlags().IntP("conn", "c", -1,
+		"Number of connections to open at each target node simultaneously. Overwrites manifest option load_tx_connections.")
+	loadCmd.PersistentFlags().IntP("time", "t", -1,
+		"Maximum duration (in seconds) of the load test.")
+	loadCmd.PersistentFlags().StringSliceP("targets", "n", nil,
+		"Comma-separated list of node names to send load to. Manifest option send_no_load will be ignored.")
+	loadCmd.PersistentFlags().BoolP("internal-ip", "i", false,
 		"Use nodes' internal IP addresses when sending transaction load. For running from inside a DO private network.")
 	cli.root.AddCommand(loadCmd)
 
@@ -284,13 +322,26 @@ func NewCLI() *CLI {
 		},
 	})
 
-	cli.root.AddCommand(&cobra.Command{
+	cleanupCmd := &cobra.Command{
 		Use:   "cleanup",
 		Short: "Removes the testnet directory",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return Cleanup(cli.testnet)
 		},
-	})
+	}
+	cli.root.AddCommand(cleanupCmd)
+
+	restartCmd := &cobra.Command{
+		Use:   "restart",
+		Short: "Restarts the testnet",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if err := cleanupCmd.RunE(cli.root, nil); err != nil {
+				return err
+			}
+			return startCmd.RunE(cli.root, nil)
+		},
+	}
+	cli.root.AddCommand(restartCmd)
 
 	var splitLogs bool
 	logCmd := &cobra.Command{
