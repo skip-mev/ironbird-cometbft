@@ -687,9 +687,10 @@ func TestMempoolTxsBytes(t *testing.T) {
 
 	// 2. len(tx) after CheckTx
 	tx1 := kvstore.NewRandomTx(10)
-	_, err := mp.CheckTx(tx1, "")
+	rr, err := mp.CheckTx(tx1, "")
 	require.NoError(t, err)
 	assert.EqualValues(t, 10, mp.SizeBytes())
+	require.NoError(t, rr.Error())
 
 	// 3. zero again after tx is removed by Update
 	err = mp.Update(1, []types.Tx{tx1}, abciResponses(1, abci.CodeTypeOK), nil, nil)
@@ -698,26 +699,41 @@ func TestMempoolTxsBytes(t *testing.T) {
 
 	// 4. zero after Flush
 	tx2 := kvstore.NewRandomTx(20)
-	_, err = mp.CheckTx(tx2, "")
+	rr, err = mp.CheckTx(tx2, "")
 	require.NoError(t, err)
+	require.NoError(t, rr.Error())
 	assert.EqualValues(t, 20, mp.SizeBytes())
 
 	mp.Flush()
 	assert.EqualValues(t, 0, mp.SizeBytes())
 
-	// 5. ErrLaneIsFull is returned when/if the limit on the lane bytes capacity is reached.
+	// 5. ErrMempoolIsFull is returned when the mempool size goes beyond its capacity (in bytes).
+	tx3 := kvstore.NewRandomTx(int(cfg.Mempool.MaxTxsBytes) + 1)
+	rr, err = mp.CheckTx(tx3, "")
+	require.ErrorAs(t, err, &ErrMempoolIsFull{})
+	require.Nil(t, rr)
+
+	mp.Flush()
+	assert.EqualValues(t, 0, mp.SizeBytes())
+
+	// 6. ErrLaneIsFull is returned when the lane size goes beyond its capacity (in bytes).
 	laneMaxBytes := int(cfg.Mempool.MaxTxsBytes) / len(mp.sortedLanes)
-	tx3 := kvstore.NewRandomTx(laneMaxBytes)
-	rr, err := mp.CheckTx(tx3, "")
+	require.Greater(t, len(mp.sortedLanes), 1)
+	require.Less(t, len(mp.sortedLanes), int(cfg.Mempool.MaxTxsBytes))
+
+	// Add a transaction that fills up, but not exceeds, the lane's capacity.
+	tx4 := kvstore.NewRandomTx(laneMaxBytes)
+	rr, err = mp.CheckTx(tx4, "")
 	require.NoError(t, err)
 	require.NoError(t, rr.Error())
 
-	tx4 := kvstore.NewRandomTx(10)
-	rr, err = mp.CheckTx(tx4, "")
+	// Add another transaction that would fill up, but not exceed, the mempool's capacity.
+	tx5 := kvstore.NewRandomTx(int(cfg.Mempool.MaxTxsBytes) - len(tx4))
+	rr, err = mp.CheckTx(tx5, "")
 	require.NoError(t, err)
 	require.ErrorAs(t, rr.Error(), &ErrLaneIsFull{})
 
-	// 6. zero after tx is rechecked and removed due to not being valid anymore
+	// 7. zero after tx is rechecked and removed due to not being valid anymore
 	app2 := kvstore.NewInMemoryApplication()
 	cc = proxy.NewLocalClientCreator(app2)
 
@@ -753,7 +769,7 @@ func TestMempoolTxsBytes(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 10, mp.SizeBytes())
 
-	// 7. Test RemoveTxByKey function
+	// 8. Test RemoveTxByKey function
 	_, err = mp.CheckTx(tx1, "")
 	require.NoError(t, err)
 	assert.EqualValues(t, 20, mp.SizeBytes())
