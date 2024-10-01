@@ -189,23 +189,50 @@ func (env *Environment) EventSearch(
 	}
 
 	txsBlockEvents := make([]ctypes.ResultTxsBlockEvents, 0)
+	events := make([]abci.Event, 0)
 
 	// Retrieve the txs results events
-	txResults, totalCount, err := env.TxIndexer.Search(ctx.Context(), q, pagSettings)
+	txResults, _, err := env.TxIndexer.Search(ctx.Context(), q, pagSettings)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, r := range txResults {
-		events := make([]abci.Event, 0)
-
 		events = append(events, r.Result.Events...)
-
 		txsBlockEvents = append(txsBlockEvents, ctypes.ResultTxsBlockEvents{
 			Height: r.Height,
 			Events: events,
 		})
 	}
 
-	return &ctypes.ResultEventSearch{ResultEvents: txsBlockEvents, TotalCount: totalCount}, nil
+	// Retrieve the txs results events
+	blockHeights, err := env.BlockIndexer.Search(ctx.Context(), q)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, h := range blockHeights {
+		block, err := env.BlockResults(ctx, &h)
+		if err != nil {
+			return nil, err
+		}
+
+		// Skip adding txResults again if it was found through tx_search (Confirm)
+		if len(txResults) == 0 && len(events) == 0 {
+			for _, txs := range block.TxResults {
+				events = append(events, txs.Events...)
+			}
+		}
+
+		events = append(events, block.FinalizeBlockEvents...)
+
+		// TODO: Should we combine events per height ? Txs and Block events
+		txsBlockEvents = append(txsBlockEvents, ctypes.ResultTxsBlockEvents{
+			Height: h,
+			Events: events,
+		})
+	}
+
+	// TODO: Get the total count properly, should it be all events ?
+	return &ctypes.ResultEventSearch{ResultEvents: txsBlockEvents, TotalCount: len(events)}, nil
 }

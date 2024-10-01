@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/abci/types"
+	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
@@ -30,13 +30,13 @@ const (
 	defaultLane     string = "default"
 )
 
-var _ types.Application = (*Application)(nil)
+var _ abci.Application = (*Application)(nil)
 
 // Application is the kvstore state machine. It complies with the abci.Application interface.
 // It takes transactions in the form of key=value and saves them in a database. This is
 // a somewhat trivial example as there is no real state execution.
 type Application struct {
-	types.BaseApplication
+	abci.BaseApplication
 
 	state        State
 	RetainBlocks int64 // blocks to retain after commit (via CommitResponse.RetainHeight)
@@ -44,7 +44,7 @@ type Application struct {
 	logger       log.Logger
 
 	// validator set
-	valUpdates         []types.ValidatorUpdate
+	valUpdates         []abci.ValidatorUpdate
 	valAddrToPubKeyMap map[string]crypto.PubKey
 
 	// If true, the app will generate block events in BeginBlock. Used to test the event indexer
@@ -125,7 +125,7 @@ func (app *Application) SetGenBlockEvents() {
 // begins and let's the application know what Tendermint versions it's interacting with. Based from this information,
 // Tendermint will ensure it is in sync with the application by potentially replaying the blocks it has. If the
 // Application returns a 0 appBlockHeight, Tendermint will call InitChain to initialize the application with consensus related data.
-func (app *Application) Info(context.Context, *types.InfoRequest) (*types.InfoResponse, error) {
+func (app *Application) Info(context.Context, *abci.InfoRequest) (*abci.InfoResponse, error) {
 	// Tendermint expects the application to persist validators, on start-up we need to reload them to memory if they exist
 	if len(app.valAddrToPubKeyMap) == 0 && app.state.Height > 0 {
 		validators := app.getValidators()
@@ -142,7 +142,7 @@ func (app *Application) Info(context.Context, *types.InfoRequest) (*types.InfoRe
 	if len(app.lanes) != 0 {
 		defLane = defaultLane
 	}
-	return &types.InfoResponse{
+	return &abci.InfoResponse{
 		Data:             fmt.Sprintf("{\"size\":%v}", app.state.Size),
 		Version:          version.ABCIVersion,
 		AppVersion:       AppVersion,
@@ -156,13 +156,13 @@ func (app *Application) Info(context.Context, *types.InfoRequest) (*types.InfoRe
 // InitChain takes the genesis validators and stores them in the kvstore. It returns the application hash in the
 // case that the application starts prepopulated with values. This method is called whenever a new instance of the application
 // starts (i.e. app height = 0).
-func (app *Application) InitChain(_ context.Context, req *types.InitChainRequest) (*types.InitChainResponse, error) {
+func (app *Application) InitChain(_ context.Context, req *abci.InitChainRequest) (*abci.InitChainResponse, error) {
 	for _, v := range req.Validators {
 		app.updateValidator(v)
 	}
 	appHash := make([]byte, 8)
 	binary.PutVarint(appHash, app.state.Size)
-	return &types.InitChainResponse{
+	return &abci.InitChainResponse{
 		AppHash: appHash,
 	}, nil
 }
@@ -174,21 +174,21 @@ func (app *Application) InitChain(_ context.Context, req *types.InitChainRequest
 // - Contains one and only one `=`
 // - `=` is not the first or last byte.
 // - if key is `val` that the validator update transaction is also valid.
-func (app *Application) CheckTx(_ context.Context, req *types.CheckTxRequest) (*types.CheckTxResponse, error) {
+func (app *Application) CheckTx(_ context.Context, req *abci.CheckTxRequest) (*abci.CheckTxResponse, error) {
 	// If it is a validator update transaction, check that it is correctly formatted
 	if isValidatorTx(req.Tx) {
 		if _, _, _, err := parseValidatorTx(req.Tx); err != nil {
-			return &types.CheckTxResponse{Code: CodeTypeInvalidTxFormat}, nil //nolint:nilerr // error is not nil but it returns nil
+			return &abci.CheckTxResponse{Code: CodeTypeInvalidTxFormat}, nil //nolint:nilerr // error is not nil but it returns nil
 		}
 	} else if !isValidTx(req.Tx) {
-		return &types.CheckTxResponse{Code: CodeTypeInvalidTxFormat}, nil
+		return &abci.CheckTxResponse{Code: CodeTypeInvalidTxFormat}, nil
 	}
 
 	if len(app.lanes) == 0 {
-		return &types.CheckTxResponse{Code: CodeTypeOK, GasWanted: 1}, nil
+		return &abci.CheckTxResponse{Code: CodeTypeOK, GasWanted: 1}, nil
 	}
 	lane := assignLane(req.Tx)
-	return &types.CheckTxResponse{Code: CodeTypeOK, GasWanted: 1, LaneId: lane}, nil
+	return &abci.CheckTxResponse{Code: CodeTypeOK, GasWanted: 1, LaneId: lane}, nil
 }
 
 // assignLane deterministically computes a lane for the given tx.
@@ -252,8 +252,8 @@ func isValidTx(tx []byte) bool {
 // KVStore has two accepted formats, `:` and `=`, we modify all instances of `:` with `=` to make it consistent. Note: this is
 // quite a trivial example of transaction modification.
 // NOTE: we assume that CometBFT will never provide more transactions than can fit in a block.
-func (app *Application) PrepareProposal(ctx context.Context, req *types.PrepareProposalRequest) (*types.PrepareProposalResponse, error) {
-	return &types.PrepareProposalResponse{Txs: app.formatTxs(ctx, req.Txs)}, nil
+func (app *Application) PrepareProposal(ctx context.Context, req *abci.PrepareProposalRequest) (*abci.PrepareProposalResponse, error) {
+	return &abci.PrepareProposalResponse{Txs: app.formatTxs(ctx, req.Txs)}, nil
 }
 
 // formatTxs validates and excludes invalid transactions
@@ -261,7 +261,7 @@ func (app *Application) PrepareProposal(ctx context.Context, req *types.PrepareP
 func (app *Application) formatTxs(ctx context.Context, blockData [][]byte) [][]byte {
 	txs := make([][]byte, 0, len(blockData))
 	for _, tx := range blockData {
-		resp, err := app.CheckTx(ctx, &types.CheckTxRequest{Tx: tx, Type: types.CHECK_TX_TYPE_CHECK})
+		resp, err := app.CheckTx(ctx, &abci.CheckTxRequest{Tx: tx, Type: abci.CHECK_TX_TYPE_CHECK})
 		if err != nil {
 			panic(fmt.Sprintln("formatTxs: CheckTx call had an unrecoverable error", err))
 		}
@@ -274,36 +274,36 @@ func (app *Application) formatTxs(ctx context.Context, blockData [][]byte) [][]b
 
 // ProcessProposal is called whenever a node receives a complete proposal. It allows the application to validate the proposal.
 // Only validators who can vote will have this method called. For the KVstore we reuse CheckTx.
-func (app *Application) ProcessProposal(ctx context.Context, req *types.ProcessProposalRequest) (*types.ProcessProposalResponse, error) {
+func (app *Application) ProcessProposal(ctx context.Context, req *abci.ProcessProposalRequest) (*abci.ProcessProposalResponse, error) {
 	for _, tx := range req.Txs {
 		// As CheckTx is a full validity check we can simply reuse this
-		resp, err := app.CheckTx(ctx, &types.CheckTxRequest{Tx: tx, Type: types.CHECK_TX_TYPE_CHECK})
+		resp, err := app.CheckTx(ctx, &abci.CheckTxRequest{Tx: tx, Type: abci.CHECK_TX_TYPE_CHECK})
 		if err != nil {
 			panic(fmt.Sprintln("ProcessProposal: CheckTx call had an unrecoverable error", err))
 		}
 		if resp.Code != CodeTypeOK {
-			return &types.ProcessProposalResponse{Status: types.PROCESS_PROPOSAL_STATUS_REJECT}, nil
+			return &abci.ProcessProposalResponse{Status: abci.PROCESS_PROPOSAL_STATUS_REJECT}, nil
 		}
 	}
-	return &types.ProcessProposalResponse{Status: types.PROCESS_PROPOSAL_STATUS_ACCEPT}, nil
+	return &abci.ProcessProposalResponse{Status: abci.PROCESS_PROPOSAL_STATUS_ACCEPT}, nil
 }
 
 // FinalizeBlock executes the block against the application state. It punishes validators who equivocated and
 // updates validators according to transactions in a block. The rest of the transactions are regular key value
 // updates and are cached in memory and will be persisted once Commit is called.
 // ConsensusParams are never changed.
-func (app *Application) FinalizeBlock(_ context.Context, req *types.FinalizeBlockRequest) (*types.FinalizeBlockResponse, error) {
+func (app *Application) FinalizeBlock(_ context.Context, req *abci.FinalizeBlockRequest) (*abci.FinalizeBlockResponse, error) {
 	// reset valset changes
-	app.valUpdates = make([]types.ValidatorUpdate, 0)
+	app.valUpdates = make([]abci.ValidatorUpdate, 0)
 	app.stagedTxs = make([][]byte, 0)
 
 	// Punish validators who committed equivocation.
 	for _, ev := range req.Misbehavior {
-		if ev.Type == types.MISBEHAVIOR_TYPE_DUPLICATE_VOTE {
+		if ev.Type == abci.MISBEHAVIOR_TYPE_DUPLICATE_VOTE {
 			addr := string(ev.Validator.Address)
 			//nolint:revive // this is a false positive from early-return
 			if pubKey, ok := app.valAddrToPubKeyMap[addr]; ok {
-				app.valUpdates = append(app.valUpdates, types.ValidatorUpdate{
+				app.valUpdates = append(app.valUpdates, abci.ValidatorUpdate{
 					Power:       ev.Validator.Power - 1,
 					PubKeyType:  pubKey.Type(),
 					PubKeyBytes: pubKey.Bytes(),
@@ -316,63 +316,74 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.FinalizeBloc
 		}
 	}
 
-	respTxs := make([]*types.ExecTxResult, len(req.Txs))
+	respTxs := make([]*abci.ExecTxResult, len(req.Txs))
+	var key, value, eventType string
+
 	for i, tx := range req.Txs {
 		if isValidatorTx(tx) {
 			keyType, pubKey, power, err := parseValidatorTx(tx)
 			if err != nil {
 				panic(err)
 			}
-			app.valUpdates = append(app.valUpdates, types.ValidatorUpdate{Power: power, PubKeyType: keyType, PubKeyBytes: pubKey})
+			app.valUpdates = append(app.valUpdates, abci.ValidatorUpdate{Power: power, PubKeyType: keyType, PubKeyBytes: pubKey})
 		} else {
 			app.stagedTxs = append(app.stagedTxs, tx)
 		}
 
-		var key, value string
 		parts := bytes.Split(tx, []byte("="))
 		if len(parts) == 2 {
 			key, value = string(parts[0]), string(parts[1])
+			keyParts := bytes.Split([]byte(key), []byte("."))
+			if len(keyParts) == 2 {
+				eventType = string(keyParts[0])
+				key = string(keyParts[1])
+			}
 		} else {
 			key, value = string(tx), string(tx)
 		}
-		respTxs[i] = &types.ExecTxResult{
-			Code: CodeTypeOK,
-			// With every transaction we can emit a series of events. To make it simple, we just emit the same events.
-			Events: []types.Event{
-				{
-					Type: "app",
-					Attributes: []types.EventAttribute{
-						{Key: "creator", Value: "Cosmoshi Netowoko", Index: true},
-						{Key: "key", Value: key, Index: true},
-						{Key: "index_key", Value: "index is working", Index: true},
-						{Key: "noindex_key", Value: "index is working", Index: false},
-					},
+
+		events := make([]abci.Event, 0)
+		if eventType != "" {
+			event := abci.Event{
+				Type: eventType,
+				Attributes: []abci.EventAttribute{
+					{Key: key, Value: value, Index: true},
+					{Key: "index_key", Value: "index is working", Index: true},
 				},
-				{
-					Type: "app",
-					Attributes: []types.EventAttribute{
-						{Key: "creator", Value: "Cosmoshi", Index: true},
-						{Key: "key", Value: value, Index: true},
-						{Key: "index_key", Value: "index is working", Index: true},
-						{Key: "noindex_key", Value: "index is working", Index: false},
-					},
-				},
+			}
+			events = append(events, event)
+		}
+
+		event := abci.Event{
+			Type: "app_event",
+			Attributes: []abci.EventAttribute{
+				{Key: key, Value: value, Index: true},
+				{Key: "index_key", Value: "index is working", Index: true},
 			},
 		}
+
+		events = append(events, event)
+
+		respTxs[i] = &abci.ExecTxResult{
+			Code: CodeTypeOK,
+			// With every transaction we can emit a series of events. To make it simple, we just emit the same events.
+			Events: events,
+		}
+
 		app.state.Size++
 	}
 
 	app.state.Height = req.Height
 
-	response := &types.FinalizeBlockResponse{TxResults: respTxs, ValidatorUpdates: app.valUpdates, AppHash: app.state.Hash()}
-	if !app.genBlockEvents {
-		return response, nil
-	}
+	response := &abci.FinalizeBlockResponse{TxResults: respTxs, ValidatorUpdates: app.valUpdates, AppHash: app.state.Hash()}
+	// if !app.genBlockEvents {
+	//	return response, nil
+	//}
 	if app.state.Height%2 == 0 {
-		response.Events = []types.Event{
+		response.Events = []abci.Event{
 			{
 				Type: "begin_event",
-				Attributes: []types.EventAttribute{
+				Attributes: []abci.EventAttribute{
 					{
 						Key:   "foo",
 						Value: "100",
@@ -386,8 +397,8 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.FinalizeBloc
 				},
 			},
 			{
-				Type: "begin_event",
-				Attributes: []types.EventAttribute{
+				Type: "end_event",
+				Attributes: []abci.EventAttribute{
 					{
 						Key:   "foo",
 						Value: "200",
@@ -402,10 +413,10 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.FinalizeBloc
 			},
 		}
 	} else {
-		response.Events = []types.Event{
+		response.Events = []abci.Event{
 			{
-				Type: "begin_event",
-				Attributes: []types.EventAttribute{
+				Type: "finalize_block_event",
+				Attributes: []abci.EventAttribute{
 					{
 						Key:   "foo",
 						Value: "400",
@@ -413,7 +424,17 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.FinalizeBloc
 					},
 					{
 						Key:   "bar",
-						Value: "300",
+						Value: "500",
+						Index: true,
+					},
+				},
+			},
+			{
+				Type: eventType,
+				Attributes: []abci.EventAttribute{
+					{
+						Key:   key,
+						Value: value,
 						Index: true,
 					},
 				},
@@ -426,7 +447,7 @@ func (app *Application) FinalizeBlock(_ context.Context, req *types.FinalizeBloc
 // Commit is called after FinalizeBlock and after Tendermint state which includes the updates to
 // AppHash, ConsensusParams and ValidatorSet has occurred.
 // The KVStore persists the validator updates and the new key values.
-func (app *Application) Commit(context.Context, *types.CommitRequest) (*types.CommitResponse, error) {
+func (app *Application) Commit(context.Context, *abci.CommitRequest) (*abci.CommitResponse, error) {
 	// apply the validator updates to state (note this is really the validator set at h + 2)
 	for _, valUpdate := range app.valUpdates {
 		app.updateValidator(valUpdate)
@@ -448,7 +469,7 @@ func (app *Application) Commit(context.Context, *types.CommitRequest) (*types.Co
 	// persist the state (i.e. size and height)
 	saveState(app.state)
 
-	resp := &types.CommitResponse{}
+	resp := &abci.CommitResponse{}
 	if app.RetainBlocks > 0 && app.state.Height >= app.RetainBlocks {
 		resp.RetainHeight = app.state.Height - app.RetainBlocks + 1
 	}
@@ -456,8 +477,8 @@ func (app *Application) Commit(context.Context, *types.CommitRequest) (*types.Co
 }
 
 // Query returns an associated value or nil if missing.
-func (app *Application) Query(_ context.Context, reqQuery *types.QueryRequest) (*types.QueryResponse, error) {
-	resQuery := &types.QueryResponse{}
+func (app *Application) Query(_ context.Context, reqQuery *abci.QueryRequest) (*abci.QueryResponse, error) {
+	resQuery := &abci.QueryResponse{}
 
 	if reqQuery.Path == "/val" {
 		key := []byte(ValidatorPrefix + string(reqQuery.Data))
@@ -466,7 +487,7 @@ func (app *Application) Query(_ context.Context, reqQuery *types.QueryRequest) (
 			panic(err)
 		}
 
-		return &types.QueryResponse{
+		return &abci.QueryResponse{
 			Key:   reqQuery.Data,
 			Value: value,
 		}, nil
@@ -545,7 +566,7 @@ func parseValidatorTx(tx []byte) (string, []byte, int64, error) {
 }
 
 // add, update, or remove a validator.
-func (app *Application) updateValidator(v types.ValidatorUpdate) {
+func (app *Application) updateValidator(v abci.ValidatorUpdate) {
 	pubkey, err := cryptoenc.PubKeyFromTypeAndBytes(v.PubKeyType, v.PubKeyBytes)
 	if err != nil {
 		panic(err)
@@ -569,7 +590,7 @@ func (app *Application) updateValidator(v types.ValidatorUpdate) {
 	} else {
 		// add or update validator
 		value := bytes.NewBuffer(make([]byte, 0))
-		if err := types.WriteMessage(&v, value); err != nil {
+		if err := abci.WriteMessage(&v, value); err != nil {
 			panic(err)
 		}
 		if err = app.state.db.Set(key, value.Bytes()); err != nil {
@@ -579,15 +600,15 @@ func (app *Application) updateValidator(v types.ValidatorUpdate) {
 	}
 }
 
-func (app *Application) getValidators() (validators []types.ValidatorUpdate) {
+func (app *Application) getValidators() (validators []abci.ValidatorUpdate) {
 	itr, err := app.state.db.Iterator(nil, nil)
 	if err != nil {
 		panic(err)
 	}
 	for ; itr.Valid(); itr.Next() {
 		if isValidatorTx(itr.Key()) {
-			validator := new(types.ValidatorUpdate)
-			err := types.ReadMessage(bytes.NewBuffer(itr.Value()), validator)
+			validator := new(abci.ValidatorUpdate)
+			err := abci.ReadMessage(bytes.NewBuffer(itr.Value()), validator)
 			if err != nil {
 				panic(err)
 			}

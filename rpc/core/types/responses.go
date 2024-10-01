@@ -263,11 +263,11 @@ type ResultEvent struct {
 // ResultTxsBlockEvents represents the result of searching for events.
 type ResultTxsBlockEvents struct {
 	Height int64             `json:"height"`
-	Events []abcitypes.Event `json:"tx_block_events"`
+	Events []abcitypes.Event `json:"events"`
 }
 
 // ResultEventSearch Result of searching for events.
 type ResultEventSearch struct {
-	ResultEvents []ResultTxsBlockEvents `json:"events"`
+	ResultEvents []ResultTxsBlockEvents `json:"tx_block_events"`
 	TotalCount   int                    `json:"total_count"`
 }
