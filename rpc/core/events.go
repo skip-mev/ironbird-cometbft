@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	abci "github.com/cometbft/cometbft/abci/types"
 	cmtpubsub "github.com/cometbft/cometbft/libs/pubsub"
 	cmtquery "github.com/cometbft/cometbft/libs/pubsub/query"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
+	"github.com/cometbft/cometbft/state/txindex"
+	"github.com/cometbft/cometbft/state/txindex/null"
 )
 
 const (
@@ -142,4 +145,67 @@ func (env *Environment) UnsubscribeAll(ctx *rpctypes.Context) (*ctypes.ResultUns
 		return nil, err
 	}
 	return &ctypes.ResultUnsubscribe{}, nil
+}
+
+// EventSearch allows you to query for events across blocks. It returns a
+// list of transaction events and block events (maximum ?per_page entries) and the total count.
+// More: https://docs.cometbft.com/main/rpc/#/Info/event_search
+func (env *Environment) EventSearch(
+	ctx *rpctypes.Context,
+	query string,
+	pagePtr, perPagePtr *int,
+	orderBy string,
+) (*ctypes.ResultEventSearch, error) {
+	// if index is disabled, return error
+	if _, ok := env.TxIndexer.(*null.TxIndex); ok {
+		return nil, ErrTxIndexingDisabled
+	} else if len(query) > maxQueryLength {
+		return nil, ErrQueryLength{len(query), maxQueryLength}
+	}
+
+	// if orderBy is not "asc", "desc", or blank, return error
+	if orderBy != "" && orderBy != Ascending && orderBy != Descending {
+		return nil, ErrInvalidOrderBy{orderBy}
+	}
+
+	q, err := cmtquery.New(query)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate number of results per page
+	perPage := env.validatePerPage(perPagePtr)
+	if pagePtr == nil {
+		// Default to page 1 if not specified
+		pagePtr = new(int)
+		*pagePtr = 1
+	}
+
+	pagSettings := txindex.Pagination{
+		OrderDesc:   orderBy == Descending,
+		IsPaginated: true,
+		Page:        *pagePtr,
+		PerPage:     perPage,
+	}
+
+	txsBlockEvents := make([]ctypes.ResultTxsBlockEvents, 0)
+
+	// Retrieve the txs results events
+	txResults, totalCount, err := env.TxIndexer.Search(ctx.Context(), q, pagSettings)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range txResults {
+		events := make([]abci.Event, 0)
+
+		events = append(events, r.Result.Events...)
+
+		txsBlockEvents = append(txsBlockEvents, ctypes.ResultTxsBlockEvents{
+			Height: r.Height,
+			Events: events,
+		})
+	}
+
+	return &ctypes.ResultEventSearch{ResultEvents: txsBlockEvents, TotalCount: totalCount}, nil
 }

@@ -324,3 +324,13 @@ func (c *Local) Unsubscribe(ctx context.Context, subscriber, query string) error
 func (c *Local) UnsubscribeAll(ctx context.Context, subscriber string) error {
 	return c.EventBus.UnsubscribeAll(ctx, subscriber)
 }
+
+func (c *Local) EventSearch(
+	_ context.Context,
+	query string,
+	page,
+	perPage *int,
+	orderBy string,
+) (*ctypes.ResultEventSearch, error) {
+	return c.env.EventSearch(c.ctx, query, page, perPage, orderBy)
+}

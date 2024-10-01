@@ -567,6 +567,34 @@ func (c *baseRPCClient) BlockSearch(
 	return result, nil
 }
 
+func (c *baseRPCClient) EventSearch(
+	ctx context.Context,
+	query string,
+	page,
+	perPage *int,
+	orderBy string,
+) (*ctypes.ResultEventSearch, error) {
+	result := new(ctypes.ResultEventSearch)
+	params := map[string]any{
+		"query":    query,
+		"order_by": orderBy,
+	}
+
+	if page != nil {
+		params["page"] = page
+	}
+	if perPage != nil {
+		params["per_page"] = perPage
+	}
+
+	_, err := c.caller.Call(ctx, "event_search", params, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (c *baseRPCClient) Validators(
 	ctx context.Context,
 	height *int64,

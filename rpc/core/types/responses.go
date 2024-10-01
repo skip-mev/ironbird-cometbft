@@ -259,3 +259,15 @@ type ResultEvent struct {
 	Data   types.TMEventData   `json:"data"`
 	Events map[string][]string `json:"events"`
 }
+
+// ResultTxsBlockEvents represents the result of searching for events.
+type ResultTxsBlockEvents struct {
+	Height int64             `json:"height"`
+	Events []abcitypes.Event `json:"tx_block_events"`
+}
+
+// ResultEventSearch Result of searching for events.
+type ResultEventSearch struct {
+	ResultEvents []ResultTxsBlockEvents `json:"events"`
+	TotalCount   int                    `json:"total_count"`
+}

@@ -91,6 +91,15 @@ type SignClient interface {
 		page, perPage *int,
 		orderBy string,
 	) (*ctypes.ResultBlockSearch, error)
+
+	// EventSearch defines a method to search for a paginated set of transactions events
+	// and block events by transaction event search criteria.
+	EventSearch(
+		ctx context.Context,
+		query string,
+		page, perPage *int,
+		orderBy string,
+	) (*ctypes.ResultEventSearch, error)
 }
 
 // HistoryClient provides access to data from genesis to now in large chunks.
