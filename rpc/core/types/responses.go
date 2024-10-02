@@ -260,14 +260,15 @@ type ResultEvent struct {
 	Events map[string][]string `json:"events"`
 }
 
-// ResultTxsBlockEvents represents the result of searching for events.
-type ResultTxsBlockEvents struct {
+// ResultEvents represents the result of searching for events.
+type ResultEvents struct {
 	Height int64             `json:"height"`
 	Events []abcitypes.Event `json:"events"`
 }
 
 // ResultEventSearch Result of searching for events.
 type ResultEventSearch struct {
-	ResultEvents []ResultTxsBlockEvents `json:"tx_block_events"`
-	TotalCount   int                    `json:"total_count"`
+	ResultTxEvents    []ResultEvents `json:"txs_events"`
+	ResultBlockEvents []ResultEvents `json:"block_events"`
+	TotalCount        int            `json:"total_count"`
 }

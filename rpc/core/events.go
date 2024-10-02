@@ -188,8 +188,8 @@ func (env *Environment) EventSearch(
 		PerPage:     perPage,
 	}
 
-	txsBlockEvents := make([]ctypes.ResultTxsBlockEvents, 0)
-	events := make([]abci.Event, 0)
+	rtEvents := make([]ctypes.ResultEvents, 0)
+	rbEvents := make([]ctypes.ResultEvents, 0)
 
 	// Retrieve the txs results events
 	txResults, _, err := env.TxIndexer.Search(ctx.Context(), q, pagSettings)
@@ -198,41 +198,45 @@ func (env *Environment) EventSearch(
 	}
 
 	for _, r := range txResults {
-		events = append(events, r.Result.Events...)
-		txsBlockEvents = append(txsBlockEvents, ctypes.ResultTxsBlockEvents{
+		txEvents := make([]abci.Event, 0)
+		// TODO: Only append events that match the query.
+		// Add a filter parameter?
+		txEvents = append(txEvents, r.Result.Events...)
+		rtEvents = append(rtEvents, ctypes.ResultEvents{
 			Height: r.Height,
-			Events: events,
+			Events: txEvents,
 		})
 	}
 
-	// Retrieve the txs results events
+	// Retrieve the block events
 	blockHeights, err := env.BlockIndexer.Search(ctx.Context(), q)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, h := range blockHeights {
+		blockEvents := make([]abci.Event, 0)
 		block, err := env.BlockResults(ctx, &h)
 		if err != nil {
 			return nil, err
 		}
 
-		// Skip adding txResults again if it was found through tx_search (Confirm)
-		if len(txResults) == 0 && len(events) == 0 {
+		// TODO: Skip adding txResults again if it was found through tx_search (heights need to match)
+		if len(block.TxResults) > 0 {
 			for _, txs := range block.TxResults {
-				events = append(events, txs.Events...)
+				blockEvents = append(blockEvents, txs.Events...)
 			}
 		}
 
-		events = append(events, block.FinalizeBlockEvents...)
+		blockEvents = append(blockEvents, block.FinalizeBlockEvents...)
 
-		// TODO: Should we combine events per height ? Txs and Block events
-		txsBlockEvents = append(txsBlockEvents, ctypes.ResultTxsBlockEvents{
+		// This is creating duplicate events, should combine by height
+		rbEvents = append(rbEvents, ctypes.ResultEvents{
 			Height: h,
-			Events: events,
+			Events: blockEvents,
 		})
 	}
 
 	// TODO: Get the total count properly, should it be all events ?
-	return &ctypes.ResultEventSearch{ResultEvents: txsBlockEvents, TotalCount: len(events)}, nil
+	return &ctypes.ResultEventSearch{ResultTxEvents: rtEvents, ResultBlockEvents: rbEvents, TotalCount: len(rtEvents) + len(rbEvents)}, nil
 }
