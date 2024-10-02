@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -188,8 +189,11 @@ func (env *Environment) EventSearch(
 		PerPage:     perPage,
 	}
 
-	rtEvents := make([]ctypes.ResultEvents, 0)
-	rbEvents := make([]ctypes.ResultEvents, 0)
+	txsEvents := make([]ctypes.ResultEvents, 0)
+	blockEvents := make([]ctypes.ResultEvents, 0)
+
+	// Use a map to track existing heights in the events
+	uniqueHeights := make(map[int64]bool)
 
 	// Retrieve the txs results events
 	txResults, _, err := env.TxIndexer.Search(ctx.Context(), q, pagSettings)
@@ -197,14 +201,15 @@ func (env *Environment) EventSearch(
 		return nil, err
 	}
 
-	for _, r := range txResults {
-		txEvents := make([]abci.Event, 0)
-		// TODO: Only append events that match the query.
-		// Add a filter parameter?
-		txEvents = append(txEvents, r.Result.Events...)
-		rtEvents = append(rtEvents, ctypes.ResultEvents{
-			Height: r.Height,
-			Events: txEvents,
+	for _, txResult := range txResults {
+		// track heights to be used in the block search logic
+		uniqueHeights[txResult.Height] = true
+
+		// TODO: Filter event that match the query (event type)
+		// TODO: Filter by tx result code = 0 (tx success)
+		txsEvents = append(txsEvents, ctypes.ResultEvents{
+			Height: txResult.Height,
+			Events: txResult.Result.Events,
 		})
 	}
 
@@ -214,29 +219,57 @@ func (env *Environment) EventSearch(
 		return nil, err
 	}
 
-	for _, h := range blockHeights {
-		blockEvents := make([]abci.Event, 0)
-		block, err := env.BlockResults(ctx, &h)
+	for _, height := range blockHeights {
+		block, err := env.BlockResults(ctx, &height)
 		if err != nil {
 			return nil, err
 		}
 
-		// TODO: Skip adding txResults again if it was found through tx_search (heights need to match)
-		if len(block.TxResults) > 0 {
+		if !uniqueHeights[height] {
+			uniqueHeights[height] = true
+
+			// Since this height was not seen in the tx search
+			// append all the events in the txs_results at this height
 			for _, txs := range block.TxResults {
-				blockEvents = append(blockEvents, txs.Events...)
+				txsEvents = append(txsEvents, ctypes.ResultEvents{
+					Height: height,
+					Events: txs.Events,
+				})
+			}
+		} else {
+			// Search the existing events retrieved in the tx search and if the
+			// height matches, check if the event already exists at that height,
+			// If not then add it to txs events. The tx events should have been found, but the events
+			// from the tx_search come from the tx indexer and the tx events here
+			// come from the block_results, so just to ensure we can capture as many events as
+			// possible.
+			for _, txs := range txsEvents {
+				if txs.Height == height {
+					for _, txEvent := range txs.Events {
+						if !eventExists(&txEvent, txs.Events) {
+							txs.Events = append(txs.Events, txEvent)
+						}
+					}
+				}
 			}
 		}
 
-		blockEvents = append(blockEvents, block.FinalizeBlockEvents...)
-
-		// This is creating duplicate events, should combine by height
-		rbEvents = append(rbEvents, ctypes.ResultEvents{
-			Height: h,
-			Events: blockEvents,
+		blockEvents = append(blockEvents, ctypes.ResultEvents{
+			Height: height,
+			Events: block.FinalizeBlockEvents,
 		})
 	}
 
 	// TODO: Get the total count properly, should it be all events ?
-	return &ctypes.ResultEventSearch{ResultTxEvents: rtEvents, ResultBlockEvents: rbEvents, TotalCount: len(rtEvents) + len(rbEvents)}, nil
+	return &ctypes.ResultEventSearch{ResultTxsEvents: txsEvents, ResultBlockEvents: blockEvents, TotalCount: len(txsEvents) + len(blockEvents)}, nil
+}
+
+// eventExists checks if an event is part of the events collection.
+func eventExists(ev *abci.Event, events []abci.Event) bool {
+	for _, event := range events {
+		if event.Type == ev.Type && reflect.DeepEqual(event.Attributes, ev.Attributes) {
+			return true
+		}
+	}
+	return false
 }
