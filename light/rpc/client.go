@@ -511,6 +511,15 @@ func (c *Client) BlockSearch(
 	return c.next.BlockSearch(ctx, query, page, perPage, orderBy)
 }
 
+func (c *Client) EventSearch(
+	ctx context.Context,
+	query string,
+	page, perPage *int,
+	orderBy string,
+) (*ctypes.ResultEventSearch, error) {
+	return c.next.EventSearch(ctx, query, page, perPage, orderBy)
+}
+
 // Validators fetches and verifies validators.
 func (c *Client) Validators(
 	ctx context.Context,
