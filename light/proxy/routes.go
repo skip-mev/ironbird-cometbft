@@ -33,6 +33,7 @@ func RPCRoutes(c *lrpc.Client) map[string]*rpcserver.RPCFunc {
 		"tx":                   rpcserver.NewRPCFunc(makeTxFunc(c), "hash,prove", rpcserver.Cacheable()),
 		"tx_search":            rpcserver.NewRPCFunc(makeTxSearchFunc(c), "query,prove,page,per_page,order_by"),
 		"block_search":         rpcserver.NewRPCFunc(makeBlockSearchFunc(c), "query,page,per_page,order_by"),
+		"event_search":         rpcserver.NewRPCFunc(makeEventSearchFunc(c), "query,page,per_page,order_by"),
 		"validators":           rpcserver.NewRPCFunc(makeValidatorsFunc(c), "height,page,per_page", rpcserver.Cacheable("height")),
 		"dump_consensus_state": rpcserver.NewRPCFunc(makeDumpConsensusStateFunc(c), ""),
 		"consensus_state":      rpcserver.NewRPCFunc(makeConsensusStateFunc(c), ""),
@@ -195,6 +196,24 @@ func makeBlockSearchFunc(c *lrpc.Client) rpcBlockSearchFunc {
 		orderBy string,
 	) (*ctypes.ResultBlockSearch, error) {
 		return c.BlockSearch(ctx.Context(), query, page, perPage, orderBy)
+	}
+}
+
+type rpcEventSearchFunc func(
+	ctx *rpctypes.Context,
+	query string,
+	page, perPage *int,
+	orderBy string,
+) (*ctypes.ResultEventSearch, error)
+
+func makeEventSearchFunc(c *lrpc.Client) rpcEventSearchFunc {
+	return func(
+		ctx *rpctypes.Context,
+		query string,
+		page, perPage *int,
+		orderBy string,
+	) (*ctypes.ResultEventSearch, error) {
+		return c.EventSearch(ctx.Context(), query, page, perPage, orderBy)
 	}
 }
 
