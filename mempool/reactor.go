@@ -13,10 +13,14 @@ import (
 	protomem "github.com/cometbft/cometbft/api/cometbft/mempool/v1"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/libs/log"
+	cmtsync "github.com/cometbft/cometbft/libs/sync"
 	"github.com/cometbft/cometbft/p2p"
+	"github.com/cometbft/cometbft/p2p/nodekey"
 	tcpconn "github.com/cometbft/cometbft/p2p/transport/tcp/conn"
 	"github.com/cometbft/cometbft/types"
 )
+
+const defaultHaveTxDisabledDuration = 1000 * time.Millisecond
 
 // Reactor handles mempool tx broadcasting amongst peers.
 // It maintains a map from peer ID to counter, to prevent gossiping txs to the
@@ -28,6 +32,9 @@ type Reactor struct {
 
 	waitSync   atomic.Bool
 	waitSyncCh chan struct{} // for signaling when to start receiving and sending txs
+
+	// Control enabled/disabled routes for disseminating txs.
+	router *gossipRouter
 
 	// Semaphores to keep track of how many connections to peers are active for broadcasting
 	// transactions. Each semaphore has a capacity that puts an upper bound on the number of
@@ -68,6 +75,7 @@ func (memR *Reactor) OnStart() error {
 	if !memR.config.Broadcast {
 		memR.Logger.Info("Tx broadcasting is disabled")
 	}
+	memR.router = newGossipRouter()
 	return nil
 }
 
@@ -145,6 +153,23 @@ func (memR *Reactor) AddPeer(peer p2p.Peer) {
 	}
 }
 
+func (memR *Reactor) RemovePeer(peer p2p.Peer, _ any) {
+	memR.Logger.Debug("Remove peer: send Reset to other peers", "peer", peer.ID())
+
+	// Remove all routes with peer as source or target.
+	memR.router.resetRoutes(peer.ID())
+
+	// Broadcast Reset to all peers except sender.
+	memR.Switch.Peers().ForEach(func(p p2p.Peer) {
+		if p.ID() != peer.ID() {
+			ok := p.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.Reset{}})
+			if !ok {
+				memR.Logger.Error("Failed to send Reset message", "peer", p.ID())
+			}
+		}
+	})
+}
+
 // Receive implements Reactor.
 // It adds any received transactions to the mempool.
 func (memR *Reactor) Receive(e p2p.Envelope) {
@@ -165,8 +190,22 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 				return
 			}
 			memR.Logger.Debug("Received HaveTx", "from", senderID, "txKey", txKey)
+			sources, err := memR.mempool.GetSenders(txKey)
+			if err != nil || len(sources) == 0 || sources[0] == noSender {
+				// Probably tx and sender got removed from the mempool.
+				memR.Logger.Error("Received HaveTx but failed to get sender", "tx", txKey.Hash(), "err", err)
+				return
+			}
+
+			// Do not gossip to the peer that send us HaveTx any transaction coming from the source of txKey.
+			// TODO: Pick a random source?
+			sourceID := sources[0]
+			memR.router.disableRoute(sourceID, senderID)
+			memR.Logger.Debug("Disable route", "source", sourceID, "target", senderID)
+
 		case *protomem.Reset:
 			memR.Logger.Debug("Received Reset", "from", senderID)
+			memR.router.resetRoutes(senderID)
 		default:
 			memR.Logger.Error("Unknown message type", "src", e.Src, "chId", e.ChannelID, "msg", e.Message)
 			memR.Switch.StopPeerForError(e.Src, fmt.Errorf("mempool cannot handle message of type: %T", e.Message))
@@ -210,16 +249,28 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 
 	reqRes, err := memR.mempool.CheckTx(tx, senderID)
 	if err != nil {
+		txKey := tx.Key()
 		switch {
 		case errors.Is(err, ErrTxInCache):
-			memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", tx.Hash()), "sender", senderID)
+			memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", txKey.Hash()), "sender", senderID)
+			memR.router.doIfTimerExpired(func() {
+				ok := sender.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.HaveTx{TxKey: txKey[:]}})
+				if !ok {
+					memR.Logger.Error("Failed to send HaveTx message", "peer", senderID, "txKey", txKey)
+				} else {
+					memR.Logger.Debug("Sent HaveTx message", "tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", senderID)
+				}
+			})
+			return nil, err
+
 		case errors.As(err, &ErrMempoolIsFull{}):
 			// using debug level to avoid flooding when traffic is high
 			memR.Logger.Debug(err.Error())
+			return nil, err
 		default:
 			memR.Logger.Info("Could not check tx", "tx", log.NewLazySprintf("%X", tx.Hash()), "sender", senderID, "err", err)
+			return nil, err
 		}
-		return nil, err
 	}
 
 	return reqRes, nil
@@ -281,6 +332,16 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			continue
 		}
 
+		txKey := entry.Tx().Key()
+		senders := entry.Senders()
+
+		// Check whether any route to this peer is enabled.
+		if !memR.router.areRoutesEnabled(senders, peer.ID()) {
+			memR.Logger.Debug("Disabled route: do not send transaction to peer",
+				"tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", peer.ID(), "senders", senders)
+			continue
+		}
+
 		// If we suspect that the peer is lagging behind, at least by more than
 		// one block, we don't send the transaction immediately. This code
 		// reduces the mempool size and the recheck-tx rate of the receiving
@@ -310,27 +371,15 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 		// NOTE: Transaction batching was disabled due to
 		// https://github.com/tendermint/tendermint/issues/5796
 
-		// We are paying the cost of computing the transaction hash in
-		// any case, even when logger level > debug. So it only once.
-		// See: https://github.com/cometbft/cometbft/issues/4167
-		txHash := entry.Tx().Hash()
-
-		// Do not send this transaction if we receive it from peer.
-		if entry.IsSender(peer.ID()) {
-			memR.Logger.Debug("Skipping transaction, peer is sender",
-				"tx", log.NewLazySprintf("%X", txHash), "peer", peer.ID())
-			continue
-		}
-
 		for {
 			// The entry may have been removed from the mempool since it was
 			// chosen at the beginning of the loop. Skip it if that's the case.
-			if !memR.mempool.Contains(entry.Tx().Key()) {
+			if !memR.mempool.Contains(txKey) {
 				break
 			}
 
 			memR.Logger.Debug("Sending transaction to peer",
-				"tx", log.NewLazySprintf("%X", txHash), "peer", peer.ID())
+				"tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", peer.ID())
 
 			success := peer.Send(p2p.Envelope{
 				ChannelID: MempoolChannel,
@@ -341,7 +390,7 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			}
 
 			memR.Logger.Debug("Failed sending transaction to peer",
-				"tx", log.NewLazySprintf("%X", txHash), "peer", peer.ID())
+				"tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", peer.ID())
 
 			select {
 			case <-time.After(PeerCatchupSleepIntervalMS * time.Millisecond):
@@ -352,4 +401,119 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			}
 		}
 	}
+}
+
+type p2pIDSet = map[nodekey.ID]struct{}
+
+// TODO: move to its own file.
+type gossipRouter struct {
+	// A set of `source -> target` routes that are disabled for disseminating transactions. Source
+	// and target are node IDs.
+	disabledRoutes map[nodekey.ID]p2pIDSet
+	mtx            cmtsync.RWMutex
+
+	// For temporarily disabling sending HaveTx messages.
+	timer   *time.Timer
+	timeMtx cmtsync.Mutex
+}
+
+func newGossipRouter() *gossipRouter {
+	return &gossipRouter{
+		disabledRoutes: make(map[nodekey.ID]p2pIDSet),
+	}
+}
+
+// disableRoute marks the route `source -> target` as disabled.
+func (r *gossipRouter) disableRoute(source, target nodekey.ID) {
+	if source == noSender || target == noSender {
+		// TODO: this shouldn't happen
+		return
+	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	targets, ok := r.disabledRoutes[source]
+	if !ok {
+		targets = make(p2pIDSet)
+	}
+	targets[target] = struct{}{}
+	r.disabledRoutes[source] = targets
+}
+
+// isRouteEnabled returns true iff the route source->target is enabled.
+func (r *gossipRouter) isRouteEnabled(source, target nodekey.ID) bool {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	// Do not send to sender.
+	if source == target {
+		return false
+	}
+
+	if targets, ok := r.disabledRoutes[source]; ok {
+		for p := range targets {
+			if p == target {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// areRoutesEnabled returns false iff all the routes from the list of sources to
+// target are disabled.
+func (r *gossipRouter) areRoutesEnabled(sources []nodekey.ID, target nodekey.ID) bool {
+	if len(sources) == 0 {
+		return true
+	}
+	for _, s := range sources {
+		if r.isRouteEnabled(s, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// resetRoutes removes all disabled routes with peerID as source or target.
+func (r *gossipRouter) resetRoutes(peerID nodekey.ID) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	// remove peer as source
+	delete(r.disabledRoutes, peerID)
+
+	// remove peer as target
+	for _, targets := range r.disabledRoutes {
+		delete(targets, peerID)
+	}
+}
+
+// doIfTimerExpired checks whether the timer has not started or if it expired. We don't want to send
+// more than one HaveTx message at the same time. It could cut all the routes to this node,
+// isolating it from Txs messages. Every time we send a HaveTx message, we start a timer. During the
+// time the timer is on, we don't send any HaveTx to allow the last peer we send HaveTx to finish
+// sending us transactions, while still receiving those same transactions through another peer.
+// After the timer expires, and if we're still receiving duplicate transactions, we can send HaveTx
+// again.
+func (r *gossipRouter) doIfTimerExpired(sendHaveTx func()) {
+	r.timeMtx.Lock()
+	defer r.timeMtx.Unlock()
+
+	// do not send HaveTx for some time, counting from the last time a HaveTx was sent.
+	if r.timer != nil {
+		select {
+		case <-r.timer.C:
+			// The timer expired: continue sending HaveTx.
+		default:
+			// Timer's still running: do not send HaveTx (a HaveTx message was sent recently).
+			return
+		}
+	}
+
+	sendHaveTx()
+
+	// (Re)start timer.
+	// TODO: check that timer.C channel is drained.
+	r.timer = time.NewTimer(defaultHaveTxDisabledDuration)
 }
