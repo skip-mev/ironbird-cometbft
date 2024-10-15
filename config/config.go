@@ -993,6 +993,7 @@ type MempoolConfig struct {
 	// TargetRedundancyDelta is a value in the range [0,1) as a percentage of
 	// TargetRedundancy. It defines the minimum and maximum bounds of redundancy
 	// that should be considered valid.
+	EnableDOGProtocol     bool    `mapstructure:"enable_dog_protocol"`
 	TargetRedundancy      float64 `mapstructure:"target_redundancy"`
 	TargetRedundancyDelta float64 `mapstructure:"target_redundancy_delta"`
 	TxsPerAdjustment      int64   `mapstructure:"txs_per_adjustment"`
@@ -1013,6 +1014,7 @@ func DefaultMempoolConfig() *MempoolConfig {
 		CacheSize:   10000,
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
+		EnableDOGProtocol:     true,
 		TargetRedundancy:      1,
 		TargetRedundancyDelta: 10,
 		TxsPerAdjustment:      500,
