@@ -8,6 +8,8 @@ repos:
     hooks:
       - id: golangci-lint-full
         args: [--timeout, 10m] # for CI
+        language: golang
+        language_version: 1.23.0
 
   # gofumpt (does not have .pre-commmit-hooks.yaml)
   - repo: local
