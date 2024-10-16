@@ -174,7 +174,7 @@ func (env *Environment) EventSearch(
 		return nil, err
 	}
 
-	// Validate number of results per page
+	// Validate number of results per page for tx indexer results
 	perPage := env.validatePerPage(perPagePtr)
 	if pagePtr == nil {
 		// Default to page 1 if not specified
@@ -206,7 +206,6 @@ func (env *Environment) EventSearch(
 		uniqueHeights[txResult.Height] = true
 
 		// TODO: Filter event that match the query (event type)
-		// TODO: Filter by tx result code = 0 (tx success)
 		txsEvents = append(txsEvents, ctypes.ResultEvents{
 			Height: txResult.Height,
 			Events: txResult.Result.Events,
@@ -214,12 +213,12 @@ func (env *Environment) EventSearch(
 	}
 
 	// Retrieve the block events
-	blockHeights, err := env.BlockIndexer.Search(ctx.Context(), q)
+	results, err := env.BlockIndexer.Search(ctx.Context(), q)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, height := range blockHeights {
+	for _, height := range results {
 		block, err := env.BlockResults(ctx, &height)
 		if err != nil {
 			return nil, err

@@ -932,7 +932,7 @@ paths:
     get:
       summary: Search for transactions
       description: |
-        Search for transactions w/ their results.
+        Search for transactions with their results.
 
         See /subscribe for the query syntax.
       operationId: tx_search
@@ -980,11 +980,66 @@ paths:
         - Info
       responses:
         "200":
-          description: List of unconfirmed transactions
+          description: List of transactions
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TxSearchResponse"
+        "500":
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/event_search:
+    get:
+      summary: Search for transaction and block events
+      description: |
+        Search for transaction and block events.
+
+        See /subscribe for the query syntax.
+      operationId: event_search
+      parameters:
+        - in: query
+          name: query
+          description: Query
+          required: true
+          schema:
+            type: string
+            example: "\"app.creator='Cosmoshi Netowoko'\""
+        - in: query
+          name: page
+          description: "Page number (1-based)"
+          required: false
+          schema:
+            type: integer
+            default: 1
+            example: 1
+        - in: query
+          name: per_page
+          description: "Number of entries per page (max: 100)"
+          required: false
+          schema:
+            type: integer
+            default: 30
+            example: 30
+        - in: query
+          name: order_by
+          description: Order in which transactions are sorted ("asc" or "desc"), by height & index. If empty, default sorting will be still applied.
+          required: false
+          schema:
+            type: string
+            default: '"asc"'
+            example: '"asc"'
+      tags:
+        - Info
+      responses:
+        "200":
+          description: List of transaction and block events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventSearchResponse"
         "500":
           description: Error
           content:
@@ -1221,7 +1276,7 @@ components:
           properties:
             result:
               type: object
-              additionalProperties: {}
+              additionalProperties: { }
     ErrorResponse:
       description: Error Response
       allOf:
@@ -1852,7 +1907,7 @@ components:
                   type: string
                   example: ""
                 app_state:
-                  properties: {}
+                  properties: { }
                   type: object
 
     GenesisChunkedResponse:
@@ -2007,7 +2062,7 @@ components:
                       type: string
                       example: "BA{100:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx} 170220253/170220253 = 1.00"
                     peer_maj_23s:
-                      properties: {}
+                      properties: { }
                       type: object
                   type: object
                 last_validators:
@@ -2488,6 +2543,90 @@ components:
             tx:
               type: string
               example: "5wHwYl3uCkaoo2GaChQmSIu8hxpJxLcCuIi8fiHN4TMwrRIU/Af1cEG7Rcs/6LjTl7YjRSymJfYaFAoFdWF0b20SCzE0OTk5OTk1MDAwEhMKDQoFdWF0b20SBDUwMDAQwJoMGmoKJuta6YchAwswBShaB1wkZBctLIhYqBC3JrAI28XGzxP+rVEticGEEkAc+khTkKL9CDE47aDvjEHvUNt+izJfT4KVF2v2JkC+bmlH9K08q3PqHeMI9Z5up+XMusnTqlP985KF+SI5J3ZOIhhNYWRlIGJ5IENpcmNsZSB3aXRoIGxvdmU="
+          type: object
+
+    EventSearchResponse:
+      type: object
+      required:
+        - "jsonrpc"
+        - "id"
+        - "result"
+      properties:
+        jsonrpc:
+          type: string
+          example: "2.0"
+        id:
+          type: integer
+          example: 0
+        result:
+          required:
+            - "txs_events"
+            - "block_events"
+            - "total_count"
+          properties:
+            txs_events:
+              type: array
+              items:
+                type: object
+                properties:
+                  height:
+                    type: string
+                    example: "1"
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          example: "app"
+                        attributes:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              key:
+                                type: string
+                                example: "creator"
+                              value:
+                                type: string
+                                example: "Cosmoshi Netowoko"
+                              index:
+                                type: boolean
+                                example: true
+            block_events:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    height:
+                      type: string
+                      example: "4"
+                    events:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            example: "finalize_block_event"
+                          attributes:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                  example: "height"
+                                value:
+                                  type: string
+                                  example: "1"
+                                index:
+                                  type: boolean
+                                  example: true
+            total_count:
+              type: string
+              example: "2"
           type: object
 
     ABCIInfoResponse:
