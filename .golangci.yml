@@ -96,6 +96,7 @@ linters-settings:
           - github.com/google
           - github.com/gorilla/websocket
           - github.com/hashicorp/golang-lru/v2
+          - github.com/hashicorp/terraform-exec/tfexec
           - github.com/lib/pq
           - github.com/libp2p/go-buffer-pool
           - github.com/lmittmann/tint

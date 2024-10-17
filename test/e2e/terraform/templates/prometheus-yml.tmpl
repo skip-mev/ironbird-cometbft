@@ -1,0 +1,12 @@
+global:
+  #Remote nodes in Sydney might be too far for polling this quick.
+  #scrape_interval: 0s500ms
+  scrape_interval: 1s
+  evaluation_interval: 10s
+
+scrape_configs:
+%{~ for i, n in nodes }
+  - job_name: '${n.name}'
+    static_configs:
+      - targets: ['${n.ip}:26660']
+%{~ endfor }

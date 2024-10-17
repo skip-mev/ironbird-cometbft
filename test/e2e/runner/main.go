@@ -7,8 +7,10 @@ import (
 	"io/fs"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,6 +23,12 @@ import (
 
 const randomSeed = 2308084734268
 
+const (
+	infraTypeDocker       = "docker"
+	infraTypeDigitalOcean = "digital-ocean"
+	infraTypeDO           = "DO"
+)
+
 var logger = log.NewLogger(os.Stdout)
 
 func main() {
@@ -29,10 +37,14 @@ func main() {
 
 // CLI is the Cobra-based command-line interface.
 type CLI struct {
-	root     *cobra.Command
-	testnet  *e2e.Testnet
-	preserve bool
-	infp     infra.Provider
+	root         *cobra.Command
+	dir          string
+	manifestPath string
+	manifest     *e2e.Manifest
+	testnet      *e2e.Testnet
+	preserve     bool
+	inft         string
+	infp         infra.Provider
 }
 
 // NewCLI sets up the CLI.
@@ -48,76 +60,47 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
-			m, err := e2e.LoadManifest(file)
+			cli.manifestPath = file
+
+			if cli.manifestPath == "" {
+				_ = cmd.Help()
+				os.Exit(0)
+			}
+
+			manifest, err := e2e.LoadManifest(cli.manifestPath)
 			if err != nil {
 				return err
 			}
+			cli.manifest = &manifest
+
+			dir, err := cmd.Flags().GetString("testnet-dir")
+			if err != nil {
+				return err
+			}
+			if dir == "" {
+				// Set default testnet directory.
+				dir = strings.TrimSuffix(file, filepath.Ext(file))
+			}
+			cli.dir = dir
 
 			inft, err := cmd.Flags().GetString("infrastructure-type")
 			if err != nil {
 				return err
 			}
-
-			var ifd e2e.InfrastructureData
-			switch inft {
-			case "docker":
-				var err error
-				ifd, err = e2e.NewDockerInfrastructureData(m)
-				if err != nil {
-					return err
-				}
-			case "digital-ocean":
-				p, err := cmd.Flags().GetString("infrastructure-data")
-				if err != nil {
-					return err
-				}
-				if p == "" {
-					return errors.New("'--infrastructure-data' must be set when using the 'digital-ocean' infrastructure-type")
-				}
-				ifd, err = e2e.InfrastructureDataFromFile(p)
-				if err != nil {
-					return fmt.Errorf("parsing infrastructure data: %s", err)
-				}
-			default:
-				return fmt.Errorf("unknown infrastructure type '%s'", inft)
+			if inft == "" {
+				// Set default infra type.
+				inft = infraTypeDocker
 			}
+			cli.inft = inft
 
-			testnetDir, err := cmd.Flags().GetString("testnet-dir")
-			if err != nil {
-				return err
-			}
-
-			testnet, err := e2e.LoadTestnet(file, ifd, testnetDir)
-			if err != nil {
-				return fmt.Errorf("loading testnet: %s", err)
-			}
-
-			cli.testnet = testnet
-			switch inft {
-			case "docker":
-				cli.infp = &docker.Provider{
-					ProviderData: infra.ProviderData{
-						Testnet:            testnet,
-						InfrastructureData: ifd,
-					},
-				}
-			case "digital-ocean":
-				cli.infp = &digitalocean.Provider{
-					ProviderData: infra.ProviderData{
-						Testnet:            testnet,
-						InfrastructureData: ifd,
-					},
-				}
-			default:
-				return fmt.Errorf("bad infrastructure type: %s", inft)
-			}
 			return nil
 		},
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := Cleanup(cli.testnet); err != nil {
+			if err := cli.infp.Cleanup(cmd.Context(), false, false); err != nil {
 				return err
 			}
-			if err := Setup(cli.testnet, cli.infp); err != nil {
+			if err := Setup(cmd.Context(), cli.testnet, cli.infp, false); err != nil {
 				return err
 			}
 
@@ -171,7 +154,7 @@ func NewCLI() *CLI {
 				return err
 			}
 			if !cli.preserve {
-				if err := Cleanup(cli.testnet); err != nil {
+				if err := cli.infp.Cleanup(cmd.Context(), false, false); err != nil {
 					return err
 				}
 			}
@@ -182,30 +165,131 @@ func NewCLI() *CLI {
 	cli.root.PersistentFlags().StringP("file", "f", "", "Testnet TOML manifest")
 	_ = cli.root.MarkPersistentFlagRequired("file")
 
-	cli.root.PersistentFlags().StringP("testnet-dir", "d", "", "Set the directory for the testnet files generated during setup")
+	cli.root.PersistentFlags().StringP("testnet-dir", "d", "",
+		"Set the directory for the testnet files generated during setup.")
 
-	cli.root.PersistentFlags().StringP("infrastructure-type", "", "docker", "Backing infrastructure used to run the testnet. Either 'digital-ocean' or 'docker'")
+	cli.root.PersistentFlags().StringP("infrastructure-type", "t",
+		"docker", "Backing infrastructure used to run the testnet. "+
+			"Either 'digital-ocean' (equally 'DO') or 'docker'.")
 
-	cli.root.PersistentFlags().StringP("infrastructure-data", "", "", "path to the json file containing the infrastructure data. Only used if the 'infrastructure-type' is set to a value other than 'docker'")
+	cli.root.PersistentFlags().StringP("infrastructure-data", "i", "",
+		"Path to the json file containing infrastructure data (default '<testnet-dir>/infra-data.json'). "+
+			"Only used if infra type is not 'docker' ")
 
 	cli.root.Flags().BoolVarP(&cli.preserve, "preserve", "p", false,
-		"Preserves the running of the test net after tests are completed")
+		"Preserves the running of the test net after tests are completed.")
 
-	cli.root.AddCommand(&cobra.Command{
-		Use:   "setup",
-		Short: "Generates the testnet directory and configuration",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return Setup(cli.testnet, cli.infp)
+	infraCmd := cobra.Command{
+		Use:   "infra",
+		Short: "Manage remote infrastructure",
+	}
+	cli.root.AddCommand(&infraCmd)
+
+	infraCmd.AddCommand(&cobra.Command{
+		Use:     "init",
+		Short:   "Initialize Terraform state and validate it (need to run only once).",
+		PreRunE: cli.initRemoteInfraProvider,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// TODO: check that DO token exists/is valid.
+			logger.Info("infra init", "type", cli.inft)
+			return cli.infp.InfraInit(cmd.Context())
 		},
 	})
 
+	infraCreateCmd := cobra.Command{
+		Use:     "create",
+		Short:   "Create and initialize remote nodes and/or Command & Control (CC) server.",
+		PreRunE: cli.initRemoteInfraProvider,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ccOnly, err := cmd.Flags().GetBool("cc-only")
+			if err != nil {
+				return err
+			}
+			yes, err := cmd.Flags().GetBool("yes")
+			if err != nil {
+				return err
+			}
+			return InfraCreate(cmd.Context(), cli.infp, ccOnly, !yes)
+		},
+	}
+	infraCreateCmd.PersistentFlags().BoolP("cc-only", "c", false, "Create Command & Control (CC) server only.")
+	infraCreateCmd.PersistentFlags().Bool("yes", false, "Don't ask for confirmation.")
+	infraCmd.AddCommand(&infraCreateCmd)
+
+	infraCmd.AddCommand(&cobra.Command{
+		Use:     "check",
+		Short:   "Check status of Command & Control (CC) server.",
+		PreRunE: cli.initInfraWithTestnet,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logger.Info("infra check", "type", cli.inft)
+			return cli.infp.InfraCheck(cmd.Context())
+		},
+	})
+
+	infraDestroyCmd := cobra.Command{
+		Use:     "destroy",
+		Short:   "Destroy all resources.",
+		PreRunE: cli.initRemoteInfraProvider,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			startTime := time.Now()
+			defer func(t time.Time) { logger.Debug(fmt.Sprintf("Infra destroy time: %s\n", time.Since(t))) }(startTime)
+
+			exceptCC, err := cmd.Flags().GetBool("except-cc")
+			if err != nil {
+				return err
+			}
+			yes, err := cmd.Flags().GetBool("yes")
+			if err != nil {
+				return err
+			}
+			return cli.infp.Cleanup(cmd.Context(), exceptCC, !yes)
+		},
+	}
+	infraDestroyCmd.PersistentFlags().Bool("except-cc", true, "Destroy all nodes except CC server (only DO infra type).")
+	infraDestroyCmd.PersistentFlags().Bool("yes", false, "Don't ask for confirmation.")
+	infraCmd.AddCommand(&infraDestroyCmd)
+
+	buildCmd := cobra.Command{
+		Use:     "build",
+		Short:   "Build Docker image with node binary and deploy to nodes",
+		PreRunE: cli.initInfraWithTestnet,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			startTime := time.Now()
+			defer func(t time.Time) { logger.Debug(fmt.Sprintf("Build time: %s\n", time.Since(t))) }(startTime)
+
+			fast, err := cmd.Flags().GetBool("fast")
+			if err != nil {
+				return err
+			}
+			return cli.infp.Build(cmd.Context(), fast)
+		},
+	}
+	buildCmd.PersistentFlags().Bool("fast", true, "Compile node binary outside the Docker image (only for 'docker' infra type).")
+	cli.root.AddCommand(&buildCmd)
+
+	setupCmd := cobra.Command{
+		Use:     "setup",
+		Short:   "Generates the testnet directory and configuration",
+		PreRunE: cli.initInfraWithTestnet,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clean, err := cmd.Flags().GetBool("clean")
+			if err != nil {
+				return err
+			}
+			return Setup(cmd.Context(), cli.testnet, cli.infp, clean)
+		},
+	}
+	setupCmd.PersistentFlags().Bool("clean", true, "Clean home directory before deploying the new config files.")
+	cli.root.AddCommand(&setupCmd)
+
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "start",
-		Short: "Starts the testnet, waiting for nodes to become available",
+		Use:     "start",
+		Short:   "Starts the testnet, waiting for nodes to become available",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := os.Stat(cli.testnet.Dir)
 			if errors.Is(err, fs.ErrNotExist) {
-				err = Setup(cli.testnet, cli.infp)
+				err = Setup(cmd.Context(), cli.testnet, cli.infp, false)
 			}
 			if err != nil {
 				return err
@@ -215,33 +299,46 @@ func NewCLI() *CLI {
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "perturb",
-		Short: "Perturbs the testnet, e.g. by restarting or disconnecting nodes",
+		Use:     "perturb",
+		Short:   "Perturbs the testnet, e.g. by restarting or disconnecting nodes",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return Perturb(cmd.Context(), cli.testnet, cli.infp)
 		},
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "wait",
-		Short: "Waits for a few blocks to be produced and all nodes to catch up",
+		Use:     "wait",
+		Short:   "Waits for a few blocks to be produced and all nodes to catch up",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return Wait(cmd.Context(), cli.testnet, 5)
 		},
 	})
 
-	cli.root.AddCommand(&cobra.Command{
-		Use:   "stop",
-		Short: "Stops the testnet",
-		RunE: func(_ *cobra.Command, _ []string) error {
+	stopCmd := cobra.Command{
+		Use:     "stop",
+		Short:   "Stops the testnet",
+		PreRunE: cli.initInfraWithTestnet,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			startTime := time.Now()
+			defer func(t time.Time) { logger.Debug(fmt.Sprintf("Stop time: %s\n", time.Since(t))) }(startTime)
+
 			logger.Info("Stopping testnet")
-			return cli.infp.StopTestnet(context.Background())
+			force, err := cmd.Flags().GetBool("force")
+			if err != nil {
+				return err
+			}
+			return cli.infp.StopTestnet(context.Background(), force)
 		},
-	})
+	}
+	stopCmd.PersistentFlags().Bool("force", false, "Kill and restart Docker.")
+	cli.root.AddCommand(&stopCmd)
 
 	loadCmd := &cobra.Command{
-		Use:   "load",
-		Short: "Generates transaction load until the command is canceled.",
+		Use:     "load",
+		Short:   "Generates transaction load until the command is canceled.",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			useInternalIP, err := cmd.Flags().GetBool("internal-ip")
 			if err != nil {
@@ -284,18 +381,19 @@ func NewCLI() *CLI {
 		"Transaction size in bytes. Overwrites manifest option load_tx_size_bytes.")
 	loadCmd.PersistentFlags().IntP("conn", "c", -1,
 		"Number of connections to open at each target node simultaneously. Overwrites manifest option load_tx_connections.")
-	loadCmd.PersistentFlags().IntP("time", "t", -1,
+	loadCmd.PersistentFlags().IntP("time", "T", -1,
 		"Maximum duration (in seconds) of the load test. Overwrites manifest option load_max_seconds.")
 	loadCmd.PersistentFlags().StringSliceP("nodes", "n", nil,
 		"Comma-separated list of node names to send load to. Manifest option send_no_load will be ignored.")
-	loadCmd.PersistentFlags().BoolP("internal-ip", "i", false,
+	loadCmd.PersistentFlags().Bool("internal-ip", false,
 		"Use nodes' internal IP addresses when sending transaction load. For running from inside a DO private network.")
 	cli.root.AddCommand(loadCmd)
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "evidence [amount]",
-		Args:  cobra.MaximumNArgs(1),
-		Short: "Generates and broadcasts evidence to a random node",
+		Use:     "evidence [amount]",
+		Args:    cobra.MaximumNArgs(1),
+		Short:   "Generates and broadcasts evidence to a random node",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			amount := 1
 
@@ -316,8 +414,9 @@ func NewCLI() *CLI {
 	})
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "test",
-		Short: "Runs test cases against a running testnet",
+		Use:     "test",
+		Short:   "Runs test cases against a running testnet",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return Test(cli.testnet, cli.infp.GetInfrastructureData())
 		},
@@ -326,7 +425,7 @@ func NewCLI() *CLI {
 	monitorCmd := cobra.Command{
 		Use:     "monitor",
 		Aliases: []string{"mon"},
-		Short:   "Manage monitoring services such as Prometheus, Grafana, ElasticSearch, etc.",
+		Short:   "Manage local monitoring services such as Prometheus, Grafana, ElasticSearch, etc.",
 		Long: "Manage monitoring services such as Prometheus, Grafana, ElasticSearch, etc.\n" +
 			"First run 'setup' to generate a Prometheus config file.",
 	}
@@ -360,7 +459,7 @@ func NewCLI() *CLI {
 				return err
 			}
 			// Remove prometheus config only when there is no testnet.
-			if _, err := os.Stat(cli.testnet.Dir); errors.Is(err, fs.ErrNotExist) {
+			if _, err := os.Stat(cli.dir); errors.Is(err, fs.ErrNotExist) {
 				if err := os.RemoveAll(PrometheusConfigFile); err != nil {
 					return err
 				}
@@ -372,48 +471,79 @@ func NewCLI() *CLI {
 	monitorCmd.AddCommand(&monitorStopCmd)
 	cli.root.AddCommand(&monitorCmd)
 
-	cli.root.AddCommand(&cobra.Command{
+	cleanupCmd := cobra.Command{
 		Use:     "cleanup",
 		Aliases: []string{"clean"},
 		Short:   "Removes the testnet directory",
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			startTime := time.Now()
+			defer func(t time.Time) { logger.Debug(fmt.Sprintf("Cleanup time: %s\n", time.Since(t))) }(startTime)
+
+			yes, err := cmd.Flags().GetBool("yes")
+			if err != nil {
+				return err
+			}
 			// Alert if monitoring services are still running.
 			outBytes, err := docker.ExecComposeOutput(cmd.Context(), "monitoring", "ps", "--services", "--filter", "status=running")
 			out := strings.TrimSpace(string(outBytes))
 			if err == nil && len(out) != 0 {
 				logger.Info("Monitoring services are still running:\n" + out)
 			}
-			return Cleanup(cli.testnet)
+			return cli.infp.Cleanup(cmd.Context(), false, !yes)
 		},
-	})
+	}
+	cleanupCmd.PersistentFlags().Bool("yes", false, "Don't ask for confirmation.")
+	cli.root.AddCommand(&cleanupCmd)
 
 	var splitLogs bool
 	logCmd := &cobra.Command{
-		Use:   "logs",
-		Short: "Shows the testnet logs. Use `--split` to split logs into separate files",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Use:     "logs",
+		Short:   "Shows the testnet logs. Use `--split` to split logs into separate files",
+		PreRunE: cli.initInfraWithTestnet,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			splitLogs, _ = cmd.Flags().GetBool("split")
+			if splitLogs && cli.inft != infraTypeDocker {
+				return errors.New("--split flag is only available for 'docker' infra type")
+			}
+			if splitLogs && len(args) > 0 {
+				return errors.New("--split flag should be used without arguments")
+			}
+			if len(args) > 1 {
+				return fmt.Errorf("too many node names provided: %s", args)
+			}
+			nodeName := ""
+			if len(args) == 1 {
+				nodeName = args[0]
+			}
 			if splitLogs {
 				for _, node := range cli.testnet.Nodes {
 					fmt.Println("Log for", node.Name)
-					err := docker.ExecComposeVerbose(context.Background(), cli.testnet.Dir, "logs", node.Name)
-					if err != nil {
+					if err := cli.infp.Logs(cmd.Context(), false, node); err != nil {
 						return err
 					}
 				}
 				return nil
 			}
-			return docker.ExecComposeVerbose(context.Background(), cli.testnet.Dir, "logs")
+			return cli.infp.Logs(cmd.Context(), false, cli.testnet.GetNodeByName(nodeName))
 		},
 	}
 	logCmd.PersistentFlags().BoolVar(&splitLogs, "split", false, "outputs separate logs for each container")
 	cli.root.AddCommand(logCmd)
 
 	cli.root.AddCommand(&cobra.Command{
-		Use:   "tail",
-		Short: "Tails the testnet logs",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return docker.ExecComposeVerbose(context.Background(), cli.testnet.Dir, "logs", "--follow")
+		Use:     "tail",
+		Short:   "Tails the testnet logs",
+		PreRunE: cli.initInfraWithTestnet,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return fmt.Errorf("too many node names provided: %s", args)
+			}
+			nodeName := ""
+			if len(args) == 1 {
+				nodeName = args[0]
+			}
+			return cli.infp.Logs(cmd.Context(), true, cli.testnet.GetNodeByName(nodeName))
 		},
 	})
 
@@ -429,11 +559,12 @@ over a 100 block sampling period.
 
 Does not run any perturbations.
 		`,
+		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := Cleanup(cli.testnet); err != nil {
+			if err := cli.infp.Cleanup(cmd.Context(), false, false); err != nil {
 				return err
 			}
-			if err := Setup(cli.testnet, cli.infp); err != nil {
+			if err := Setup(cmd.Context(), cli.testnet, cli.infp, false); err != nil {
 				return err
 			}
 
@@ -466,7 +597,7 @@ Does not run any perturbations.
 				return err
 			}
 
-			return Cleanup(cli.testnet)
+			return cli.infp.Cleanup(cmd.Context(), false, false)
 		},
 	})
 
@@ -479,4 +610,66 @@ func (cli *CLI) Run() {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
+}
+
+func (cli *CLI) initRemoteInfraProvider(_ *cobra.Command, _ []string) error {
+	switch cli.inft {
+	case infraTypeDocker:
+		return errors.New("'docker' infra type not supported on this command")
+	case infraTypeDigitalOcean, infraTypeDO:
+		pd := infra.NewProviderData(cli.manifest, cli.manifestPath, cli.dir, nil, nil, logger)
+		cli.infp = &digitalocean.Provider{ProviderData: pd}
+	default:
+		return fmt.Errorf("unknown infrastructure type '%s'", cli.inft)
+	}
+	return nil
+}
+
+func (cli *CLI) initInfraWithTestnet(cmd *cobra.Command, _ []string) error {
+	var ifd e2e.InfrastructureData
+	switch cli.inft {
+	case infraTypeDocker:
+		var err error
+		ifd, err = e2e.NewDockerInfrastructureData(*cli.manifest)
+		if err != nil {
+			return err
+		}
+	case infraTypeDigitalOcean, infraTypeDO:
+		path, err := cmd.Flags().GetString("infrastructure-data")
+		if err != nil {
+			return err
+		}
+		if path == "" {
+			// Try with default path.
+			path = filepath.Join(cli.dir, "infra-data.json")
+		}
+		_, err = os.Stat(path)
+		if os.IsNotExist(err) {
+			// TODO: call infra create?
+			return errors.New("infrastructure data file not found")
+		}
+		ifd, err = e2e.InfrastructureDataFromFile(path)
+		if err != nil {
+			return fmt.Errorf("parsing infrastructure data: %s", err)
+		}
+	default:
+		return fmt.Errorf("unknown infrastructure type '%s'", cli.inft)
+	}
+
+	testnet, err := e2e.LoadTestnet(cli.manifestPath, ifd, cli.dir)
+	if err != nil {
+		return fmt.Errorf("loading testnet: %s", err)
+	}
+	cli.testnet = testnet
+
+	pd := infra.NewProviderData(cli.manifest, cli.manifestPath, cli.dir, testnet, &ifd, logger)
+	switch cli.inft {
+	case infraTypeDocker:
+		cli.infp = &docker.Provider{ProviderData: pd}
+	case infraTypeDigitalOcean, infraTypeDO:
+		cli.infp = &digitalocean.Provider{ProviderData: pd}
+	default:
+		return fmt.Errorf("bad infrastructure type: %s", cli.inft)
+	}
+	return nil
 }

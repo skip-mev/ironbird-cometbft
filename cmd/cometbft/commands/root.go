@@ -80,7 +80,7 @@ func ParseConfig(cmd *cobra.Command) (*cfg.Config, error) {
 // RootCmd is the root command for CometBFT core.
 var RootCmd = &cobra.Command{
 	Use:   "cometbft",
-	Short: "BFT state machine replication for applications in any programming languages",
+	Short: "BFT state machine replication for applications in any programming language",
 	PersistentPreRunE: func(cmd *cobra.Command, _ []string) (err error) {
 		if cmd.Name() == VersionCmd.Name() {
 			return nil

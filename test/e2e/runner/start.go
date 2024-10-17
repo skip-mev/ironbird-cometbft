@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -15,6 +16,9 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 	if len(testnet.Nodes) == 0 {
 		return errors.New("no nodes in testnet")
 	}
+
+	startTime := time.Now()
+	defer func(t time.Time) { logger.Debug(fmt.Sprintf("Start time: %s\n", time.Since(t))) }(startTime)
 
 	// Nodes are already sorted by name. Sort them by name then startAt,
 	// which gives the overall order startAt, mode, name.

@@ -37,6 +37,8 @@ const (
 	defaultConnections = 1
 	defaultTxSizeBytes = 1024
 
+	defaultRegion = "ams3"
+
 	localVersion = "cometbft/e2e-node:local-version"
 )
 
@@ -181,6 +183,9 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 	if testnet.LoadTxSizeBytes == 0 {
 		testnet.LoadTxSizeBytes = defaultTxSizeBytes
 	}
+	if testnet.Region == "" {
+		testnet.Region = defaultRegion
+	}
 
 	if len(testnet.Lanes) == 0 {
 		testnet.Lanes = app.DefaultLanes()
@@ -213,7 +218,7 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 
 	testnet.LatencyEmulationEnabled = true
 
-	for _, name := range sortNodeNames(&manifest) {
+	for _, name := range manifest.SortNodeNames() {
 		nodeManifest := manifest.NodesMap[name]
 		ind, ok := ifd.Instances[name]
 		if !ok {
@@ -459,7 +464,7 @@ func (t Testnet) Validate() error {
 			)
 		}
 	}
-	nodeNames := sortNodeNames(t.Manifest)
+	nodeNames := t.Manifest.SortNodeNames()
 	for _, nodeName := range t.LoadTargetNodes {
 		if !slices.Contains(nodeNames, nodeName) {
 			return fmt.Errorf("%s is not the list of nodes", nodeName)
@@ -673,6 +678,15 @@ func (t Testnet) HasPerturbations() bool {
 		}
 	}
 	return false
+}
+
+func (t Testnet) GetNodeByName(name string) *Node {
+	for _, n := range t.Nodes {
+		if n.Name == name {
+			return n
+		}
+	}
+	return nil
 }
 
 // weightedRandomIndex, given a list of cumulative weights and the sum of all
