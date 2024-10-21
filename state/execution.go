@@ -162,7 +162,9 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 		return nil, err
 	}
 
-	return state.MakeBlock(height, txl, commit, evidence, proposerAddr), nil
+	block, err = state.MakeBlock(height, txl, commit, evidence, proposerAddr), nil
+	blockExec.LogBlockTimestamp("computed", state, block)
+	return block, err
 }
 
 func (blockExec *BlockExecutor) ProcessProposal(
@@ -252,6 +254,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		"block_app_hash", fmt.Sprintf("%X", abciResponse.AppHash),
 		"syncing_to_height", syncingToHeight,
 	)
+	blockExec.LogBlockTimestamp("committed", state, block)
 
 	// Assert that the application correctly returned tx results for each of the transactions provided in the block
 	if len(block.Data.Txs) != len(abciResponse.TxResults) {
