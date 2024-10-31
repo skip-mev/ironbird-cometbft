@@ -81,6 +81,11 @@ func migrateDBs(targetVersion uint, config *cfg.Config) error {
 	if err != nil {
 		return err
 	}
+
+	err = blockStoreDB.Set([]byte("version"), []byte("v2"))
+	if err != nil {
+		panic(err)
+	}
 	defer blockStoreDB.Close()
 	if err := migrateBlockStoreDB(blockStoreDB, targetVersion); err != nil {
 		return fmt.Errorf("blockstore: %w", err)
@@ -91,6 +96,10 @@ func migrateDBs(targetVersion uint, config *cfg.Config) error {
 	if err != nil {
 		return err
 	}
+	err = stateDB.Set([]byte("version"), []byte("v2"))
+	if err != nil {
+		panic(err)
+	}
 	defer stateDB.Close()
 	if err := migrateStateDB(stateDB, targetVersion); err != nil {
 		return fmt.Errorf("state: %w", err)
@@ -100,6 +109,10 @@ func migrateDBs(targetVersion uint, config *cfg.Config) error {
 	evidenceDB, err := cfg.DefaultDBProvider(&cfg.DBContext{ID: "evidence", Config: config})
 	if err != nil {
 		return err
+	}
+	err = evidenceDB.Set([]byte("version"), []byte("v2"))
+	if err != nil {
+		panic(err)
 	}
 	defer evidenceDB.Close()
 	if err := migrateEvidenceDB(evidenceDB, targetVersion); err != nil {
