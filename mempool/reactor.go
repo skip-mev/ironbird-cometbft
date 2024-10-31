@@ -560,11 +560,11 @@ type redundancyControl struct {
 }
 
 func newRedundancyControl(config *cfg.MempoolConfig) *redundancyControl {
-	targetRedundancySlackAbs := float64(config.TargetRedundancy) * float64(config.TargetRedundancyDelta) / 100.
+	targetRedundancyDeltaAbs := float64(config.TargetRedundancy) * float64(config.TargetRedundancyDelta)
 	return &redundancyControl{
 		txsPerAdjustment: config.TxsPerAdjustment,
-		lowerBound:       config.TargetRedundancy - targetRedundancySlackAbs,
-		upperBound:       config.TargetRedundancy - targetRedundancySlackAbs,
+		lowerBound:       config.TargetRedundancy - targetRedundancyDeltaAbs,
+		upperBound:       config.TargetRedundancy + targetRedundancyDeltaAbs,
 	}
 }
 

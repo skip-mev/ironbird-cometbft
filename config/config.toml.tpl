@@ -385,7 +385,7 @@ experimental_publish_event_pending_tx = {{ .Mempool.ExperimentalPublishEventPend
 
 enable_dog_protocol = {{ .Mempool.EnableDOGProtocol }}
 target_redundancy = {{ .Mempool.TargetRedundancy }}
-target_redundancy_slack = {{ .Mempool.TargetRedundancySlack }}
+target_redundancy_delta = {{ .Mempool.TargetRedundancyDelta }}
 txs_per_adjustment = {{ .Mempool.TxsPerAdjustment }}
 
 #######################################################
