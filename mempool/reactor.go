@@ -605,7 +605,7 @@ func (r *redundancyControl) adjustRedundancy() (float64, bool) {
 	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
 	if redundancy < r.lowerBound {
 		sendReset = true
-	} else if redundancy > r.upperBound {
+	} else if redundancy >= r.upperBound {
 		r.blockHaveTx.Store(false)
 	}
 
