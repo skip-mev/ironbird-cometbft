@@ -349,7 +349,10 @@ func NewTestnetFromManifest(manifest Manifest, file string, ifd InfrastructureDa
 		testnet.ValidatorUpdates[int64(height)] = valUpdate
 	}
 
-	if testnet.ConstantFlip {
+	// If the constant flip is set, ensure the number of validators is
+	// greater than one (1), otherwise a consensus failure might be
+	// triggered
+	if testnet.ConstantFlip && len(testnet.Validators) > 1 {
 		// Pick "lowest" validator by name
 		var minNode string
 		for n := range testnet.Validators {
