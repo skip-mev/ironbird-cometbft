@@ -1,17 +1,20 @@
 # End-to-End Tests
 
-- [End-to-End Tests](#end-to-end-tests)
-	- [Fast compilation](#fast-compilation)
-	- [Conceptual Overview](#conceptual-overview)
-	- [Testnet Manifests](#testnet-manifests)
-	- [Random Testnet Generation](#random-testnet-generation)
-	- [Test Stages](#test-stages)
-	- [Tests](#tests)
-		- [Running Manual Tests](#running-manual-tests)
-		- [Debugging Failures](#debugging-failures)
-	- [Enabling IPv6](#enabling-ipv6)
-	- [Benchmarking Testnets](#benchmarking-testnets)
-	- [Running Individual Nodes](#running-individual-nodes)
+Table of contents:
+- [Digital Ocean](#digital-ocean)
+- [Fast compilation](#fast-compilation)
+- [Conceptual Overview](#conceptual-overview)
+- [Testnet Manifests](#testnet-manifests)
+- [Random Testnet Generation](#random-testnet-generation)
+- [Test Stages](#test-stages)
+- [Tests](#tests)
+	- [Running Manual Tests](#running-manual-tests)
+	- [Debugging Failures](#debugging-failures)
+- [Enabling IPv6](#enabling-ipv6)
+- [Benchmarking Testnets](#benchmarking-testnets)
+- [Running Individual Nodes](#running-individual-nodes)
+
+-----
 
 Spins up and tests CometBFT networks in Docker Compose based on a testnet manifest. To run the CI testnet:
 
@@ -26,6 +29,95 @@ To generate the testnet files in a different directory, run:
 ```sh
 ./build/runner -f networks/ci.toml -d networks/foo/bar/
 ```
+
+### Digital Ocean
+
+#### Prerequisites
+
+- [Digital Ocean CLI][doctl]
+- [Terraform CLI][Terraform]
+- [pssh](https://linux.die.net/man/1/pssh) (Mac) or [parallel-ssh](https://manpages.org/parallel-ssh) (Linux) on your
+  local machine.
+
+#### Setup
+
+1. Set up your [personal access token for DO][do-token]. You may skip this step if you have executed it before.
+   1. Initialize `doctl` and get the fingerprint of the SSH key you want to be associated with the root user on the created
+      VMs.
+    	```bash
+   		doctl auth init
+    	doctl compute ssh-key list
+        ```
+   2. Set up your DigitalOcean credentials as Terraform variables. Be sure to write them to
+      `terraform/terraform.tfvars` as this file is ignored in `.gitignore`.
+       ```bash
+       cat <<EOF > ./terraform/terraform.tfvars
+       do_token = "dop_v1_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+       ssh_keys = ["ab:cd:ef:01:23:45:67:89:ab:cd:ef:01:23:45:67:89"]
+       EOF
+       ```
+    
+    If your token expired, you may need to force the use of the one you just generated here by using
+    `doctl auth init -t <new token>` instead.
+    ```bash
+    doctl auth init -t dop_v1_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    ```
+
+2. Initialize Terraform (only needed once).
+    ```bash
+    cd terraform && terraform init
+    ```
+	or 
+	```bash
+	./build/runner -f <manifest-file> -t DO infra init
+	```
+
+3. If necessary, customize the variable `vpc_subnet` in `terraform/variables.tf` to prevent
+   collisions with other QA runs, including possibly other users of the DigitalOcean project who
+   might be running other testnets. If the subnet is allocated in the private IP address range
+   `172.16.0.0/12`, as it is in the unmodified file, a good choice should be in the range
+   `172.16.16.0/20` - `172.31.240.0/20`. You may also need to rename the DO project `main-testnet`
+   in `terraform/project.tf` to a unique name.
+
+4. Compile E2E Runner from `test/e2e`
+	```bash
+	make runner
+	```
+
+#### Example
+
+```
+make runner
+./build/runner -f networks/200-nodes.toml -t DO infra init            # only needed once
+./build/runner -f networks/200-nodes.toml -t DO infra create [--yes]
+./build/runner -f networks/200-nodes.toml -t DO infra check           # optional
+./build/runner -f networks/200-nodes.toml -t DO setup                 # upload config files
+./build/runner -f networks/200-nodes.toml -t DO start
+./build/runner -f networks/200-nodes.toml -t DO load -r 400 -T 60
+./build/runner -f networks/200-nodes.toml -t DO stop
+./build/runner -f networks/200-nodes.toml -t DO build                 # recompile and upload binary
+./build/runner -f networks/200-nodes.toml -t DO start
+./build/runner -f networks/200-nodes.toml -t DO infra destroy [--yes]
+```
+
+- Flag `-t DO` is equivalent to `--infrastructure-type digital-ocean`.
+- Flag `--infrastructure-data <file>` (equivalently `-i <file>`) takes as default the file
+  `<testnet-dir>/infra-data.json`.
+- `infra create` performs the following actions in parallel:
+  1. Create testnet nodes in DigitalOcean. On the nodes it also
+installs required tools and dependencies. 
+  1. Create a Command & Control (CC) server in DigitalOcean. It includes:
+    - an NFS server to share the app binary with the nodes (in `/data`), 
+    - a DNS server, and 
+    - monitoring servers (Prometheus and Grafana).
+  2. Run the equivalent of the `build` command to compile and upload the app to `/data` in CC, which
+    can accessed by all nodes via NFS.
+- The flag `--yes` is for not asking for confirmation on `infra create/destroy`.
+- `build` compiles locally a binary file and uploads it to `/data` in CC. Use it to change the code
+  and upload a new binary to make it available to nodes.
+- `setup --clean` removes the home directory in each node before (re-)deploying the config files.
+  Default value is `true`.
+- `cleanup` (equivalently `clean`) should be the same as `infra destroy --yes`.
 
 ### Fast compiling
 
@@ -288,3 +380,6 @@ These services run independently of the testnet, to be able to analyse the data 
 testnet is down.
 
 [rfc-001]: https://github.com/tendermint/tendermint/blob/master/docs/architecture/adr-066-e2e-testing.md
+[Terraform]: https://www.terraform.io/docs
+[doctl]: https://docs.digitalocean.com/reference/doctl/how-to/install/
+[do-token]: https://docs.digitalocean.com/reference/api/create-personal-access-token/
