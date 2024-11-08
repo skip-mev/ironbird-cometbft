@@ -93,15 +93,18 @@ func (p *Provider) Build(ctx context.Context, _ bool) error {
 		return err
 	}
 
-	p.Logger.Debug("Build and upload binary to CC")
-	cmds := []string{
-		// Build binary locally for DO droplet architecture.
-		"CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/app ./node",
-
-		// Upload binary to shared NFS directory in CC server.
-		fmt.Sprintf("scp -C %s %s %s", sshOpts, "build/app", "root@"+p.Terraform.CCIP+":/data"),
+	// Build binary locally for the DO droplet architecture.
+	binaryPath := "build/app"
+	p.Logger.Debug("Build app binary", "path", binaryPath)
+	cmd := fmt.Sprintf("CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o %s ./node", binaryPath)
+	if err := exec.Command(ctx, "/bin/sh", "-c", cmd); err != nil {
+		return err
 	}
-	if err := exec.Command(ctx, "/bin/sh", "-c", strings.Join(cmds, " && ")); err != nil {
+
+	// Upload binary to shared NFS directory in CC server.
+	p.Logger.Debug("Upload binary to CC")
+	cmd = fmt.Sprintf("scp -C %s %s root@%s:/data", sshOpts, binaryPath, p.Terraform.CCIP)
+	if err := exec.Command(ctx, "/bin/sh", "-c", cmd); err != nil {
 		return err
 	}
 
