@@ -161,7 +161,7 @@ func (tf *Terraform) Destroy(ctx context.Context, varAssignments []string, _, co
 		if err == nil {
 			break
 		}
-		time.Sleep(time.Second)
+		time.Sleep(3 * time.Second)
 	}
 	return err
 }
