@@ -276,10 +276,19 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
+			le, err := cmd.Flags().GetBool("le")
+			if err != nil {
+				return err
+			}
+			if !le {
+				cli.testnet.LatencyEmulationEnabled = false
+			}
 			return Setup(cmd.Context(), cli.testnet, cli.infp, clean)
 		},
 	}
 	setupCmd.PersistentFlags().Bool("clean", true, "Clean home directory before deploying the new config files.")
+	// FIX: latency emulation should be run before setup, but currently it needs testnet.
+	setupCmd.PersistentFlags().Bool("le", true, "Run latency emulation script.")
 	cli.root.AddCommand(&setupCmd)
 
 	cli.root.AddCommand(&cobra.Command{
