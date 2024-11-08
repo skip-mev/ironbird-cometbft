@@ -594,15 +594,21 @@ func (r *redundancyControl) adjustRedundancy() (float64, bool) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
+
 	// Is it time for an adjustment?
-	if r.firstTimeTxs < r.txsPerAdjustment {
+	if redundancy == 0 {
+		return -1, false
+	}
+	threshold := float64(r.txsPerAdjustment) / redundancy
+	threshold = max(10, min(1000, threshold))
+	if r.firstTimeTxs < int64(threshold) {
 		return -1, false
 	}
 
 	// Adjust redundancy level by asking peers either (1) to send more txs (with
 	// Reset messages) or (2) to send less txs (unblocking HaveTx messages).
 	sendReset := false
-	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
 	if redundancy < r.lowerBound {
 		sendReset = true
 	} else if redundancy >= r.upperBound {
