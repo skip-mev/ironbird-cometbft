@@ -148,7 +148,7 @@ func (p *Provider) Setup(ctx context.Context, clean bool) error {
 			}
 
 			// Copy to remote.
-			remoteLocation := "root@" + n.ExternalIP.String() + ":" + remoteDir + "/" + remoteFile
+			remoteLocation := "root@" + n.ExternalIP.String() + ":/root/" + remoteFile
 			cmd := fmt.Sprintf("scp -r %s %s %s", sshOpts, tgzFile, remoteLocation)
 			if err := exec.Command(groupCtx, "/bin/sh", "-c", cmd); err != nil {
 				return fmt.Errorf("%s: %w", n.Name, err)
@@ -163,9 +163,10 @@ func (p *Provider) Setup(ctx context.Context, clean bool) error {
 
 	p.Logger.Debug("Uncompress config files remotely", "clean", clean)
 	nodeIPs := p.allNodeIPs()
-	cmd := fmt.Sprintf("cd %s && tar -xvzf %s", remoteDir, remoteFile)
+	cmd := fmt.Sprintf("cp /root/%s %s && cd %s && tar -xvzf %s", remoteFile, remoteDir, remoteDir, remoteFile)
 	if clean {
-		cmd = fmt.Sprintf("rm -rdf %s/config && rm -rdf %s/data && %s", remoteDir, remoteDir, cmd)
+		// Clean home directory before copying config files.
+		cmd = fmt.Sprintf("rm -rdf %s && mkdir -p %s && %s", remoteDir, remoteDir, cmd)
 	}
 	err := pssh(ctx, nodeIPs, cmd)
 	if err != nil {
