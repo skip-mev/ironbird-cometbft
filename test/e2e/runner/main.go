@@ -489,20 +489,15 @@ func NewCLI() *CLI {
 			startTime := time.Now()
 			defer func(t time.Time) { logger.Debug(fmt.Sprintf("Cleanup time: %s\n", time.Since(t))) }(startTime)
 
-			yes, err := cmd.Flags().GetBool("yes")
-			if err != nil {
-				return err
-			}
 			// Alert if monitoring services are still running.
 			outBytes, err := docker.ExecComposeOutput(cmd.Context(), "monitoring", "ps", "--services", "--filter", "status=running")
 			out := strings.TrimSpace(string(outBytes))
 			if err == nil && len(out) != 0 {
 				logger.Info("Monitoring services are still running:\n" + out)
 			}
-			return cli.infp.Cleanup(cmd.Context(), false, !yes)
+			return cli.infp.Cleanup(cmd.Context(), false, false)
 		},
 	}
-	cleanupCmd.PersistentFlags().Bool("yes", false, "Don't ask for confirmation.")
 	cli.root.AddCommand(&cleanupCmd)
 
 	var splitLogs bool
