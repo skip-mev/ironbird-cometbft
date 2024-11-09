@@ -294,7 +294,7 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 	if memR.router != nil {
 		// Adjust redundancy.
 		memR.redundancyControl.incFirstTimeTxs()
-		redundancy, sendReset := memR.redundancyControl.adjustRedundancy()
+		redundancy, threshold, sendReset := memR.redundancyControl.adjustRedundancy()
 		if sendReset {
 			memR.Logger.Info("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
 			randomPeer := memR.Switch.Peers().Random()
@@ -306,6 +306,9 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 		// Update metrics.
 		if redundancy >= 0 {
 			memR.mempool.metrics.Redundancy.Set(redundancy)
+		}
+		if threshold >= 0 {
+			memR.mempool.metrics.RedundancyAdjustmentThreshold.Set(float64(threshold))
 		}
 	}
 
@@ -590,7 +593,8 @@ func (r *redundancyControl) incFirstTimeTxs() {
 	r.firstTimeTxs++
 }
 
-func (r *redundancyControl) adjustRedundancy() (float64, bool) {
+// Note: temporarily return threshold to update metrics.
+func (r *redundancyControl) adjustRedundancy() (float64, int64, bool) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -598,12 +602,11 @@ func (r *redundancyControl) adjustRedundancy() (float64, bool) {
 
 	// Is it time for an adjustment?
 	if redundancy == 0 {
-		return -1, false
+		return -1, -1, false
 	}
-	threshold := float64(r.txsPerAdjustment) / redundancy
-	threshold = max(10, min(1000, threshold))
-	if r.firstTimeTxs < int64(threshold) {
-		return -1, false
+	threshold := int64(max(10, min(1000, float64(r.txsPerAdjustment)/redundancy)))
+	if r.firstTimeTxs < threshold {
+		return -1, threshold, false
 	}
 
 	// Adjust redundancy level by asking peers either (1) to send more txs (with
@@ -619,5 +622,5 @@ func (r *redundancyControl) adjustRedundancy() (float64, bool) {
 	r.firstTimeTxs = 0
 	r.duplicates = 0
 
-	return redundancy, sendReset
+	return redundancy, threshold, sendReset
 }

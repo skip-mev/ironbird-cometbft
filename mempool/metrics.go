@@ -79,6 +79,8 @@ type Metrics struct {
 
 	Redundancy metrics.Gauge
 
+	RedundancyAdjustmentThreshold metrics.Gauge
+
 	// Cumulative time spent rechecking transactions
 	RecheckDurationSeconds metrics.Gauge
 }
