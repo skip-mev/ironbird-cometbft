@@ -296,11 +296,11 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 		memR.redundancyControl.incFirstTimeTxs()
 		redundancy, threshold, sendReset := memR.redundancyControl.adjustRedundancy()
 		if sendReset {
-			memR.Logger.Info("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
+			memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
 			randomPeer := memR.Switch.Peers().Random()
 			memR.SendReset(randomPeer)
 		} else if redundancy >= 0 {
-			memR.Logger.Info("TX redundancy ABOVE upper limit: decrease it (block HaveTx)", "redundancy", redundancy)
+			memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (block HaveTx)", "redundancy", redundancy)
 		}
 
 		// Update metrics.
