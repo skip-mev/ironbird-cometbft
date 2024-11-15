@@ -32,7 +32,7 @@ resource "digitalocean_droplet" "cc" {
   }
   provisioner "file" {
     source      = "../monitoring/config-grafana/provisioning/dashboards-data"
-    destination = "/root"
+    destination = "/root/grafana/"
   }
   provisioner "file" {
     content     = tls_private_key.ssh.private_key_openssh
@@ -65,6 +65,12 @@ resource "terraform_data" "cc-dns" {
       "systemctl reload-or-restart dnsmasq"
     ]
   }
+}
+
+resource "local_file" "cc-ip" {
+  depends_on = [digitalocean_droplet.cc]
+  content  = local.cc.ip
+  filename = "../${var.testnet_dir}/.cc-ip"
 }
 
 resource "terraform_data" "prometheus-config" {

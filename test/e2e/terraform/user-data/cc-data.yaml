@@ -138,10 +138,10 @@ write_files:
       ethers:         db files
       rpc:            db files
       netgroup:       nis
-  - path: /root/docker/grafana_prometheus_source.yml
+  - path: /root/grafana/prometheus_source.yml
     encoding: b64
     content: ${grafana_data_sources}
-  - path: /root/docker/default-dashboard.yml
+  - path: /root/grafana/default-dashboard.yml
     encoding: b64
     content: ${grafana_dashboards_config}
   - path: /root/docker/compose.yml
@@ -180,9 +180,9 @@ write_files:
           container_name: grafana
           image: grafana/grafana-oss
           volumes:
-            - /root/docker/grafana_prometheus_source.yml:/etc/grafana/provisioning/datasources/prometheus.yml
-            - /root/docker/default-dashboard.yml:/etc/grafana/provisioning/dashboards/default-dashboard.yml
-            - /root/dashboards-data:/etc/grafana/provisioning/dashboards-data
+            - /root/grafana/prometheus_source.yml:/etc/grafana/provisioning/datasources/prometheus.yml
+            - /root/grafana/default-dashboard.yml:/etc/grafana/provisioning/dashboards/default-dashboard.yml
+            - /root/grafana/dashboards-data:/etc/grafana/provisioning/dashboards-data
             - grafana:/var/lib/grafana
           ports:
             - 0.0.0.0:3000:3000
