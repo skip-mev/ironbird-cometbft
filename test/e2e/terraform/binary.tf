@@ -26,8 +26,6 @@ resource "terraform_data" "binary-remote" {
   }
 
   provisioner "file" {
-    # source      = "../build/app.tgz"
-    # destination = "/root/app.tgz"
     source      = "../build/app"
     destination = "/root/app"
   }

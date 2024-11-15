@@ -13,13 +13,13 @@ resource "digitalocean_ssh_key" "cc" {
 }
 
 resource "digitalocean_droplet" "cc" {
-  # depends_on = [digitalocean_vpc.testnet-vpc]
-  name     = "cc"
-  image    = "debian-12-x64"
-  region   = var.region
-  tags     = concat(var.tags, ["cc", var.region])
-  size     = var.cc_size
-  ssh_keys = concat(var.ssh_keys, [digitalocean_ssh_key.cc.id])
+  name       = "cc"
+  image      = "debian-12-x64"
+  region     = var.region
+  tags       = concat(var.tags, ["cc", var.region])
+  size       = var.cc_size
+  vpc_uuid   = digitalocean_vpc.testnet-vpc.id
+  ssh_keys   = concat(var.ssh_keys, [digitalocean_ssh_key.cc.id])
   user_data = templatefile("user-data/cc-data.yaml", {
     grafana_data_sources      = filebase64("../monitoring/config-grafana/provisioning/datasources/prometheus.yml")
     grafana_dashboards_config = filebase64("../monitoring/config-grafana/provisioning/dashboards/default.yml")
