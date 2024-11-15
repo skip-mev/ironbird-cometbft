@@ -327,7 +327,7 @@ func (blockExec *BlockExecutor) ExtendVote(
 	vote *types.Vote,
 	block *types.Block,
 	state State,
-) ([]byte, error) {
+) ([]byte, []byte, error) {
 	if !block.HashesTo(vote.BlockID.Hash) {
 		panic(fmt.Sprintf("vote's hash does not match the block it is referring to %X!=%X", block.Hash(), vote.BlockID.Hash))
 	}
@@ -350,7 +350,7 @@ func (blockExec *BlockExecutor) ExtendVote(
 	if err != nil {
 		panic(fmt.Errorf("ExtendVote call failed: %w", err))
 	}
-	return resp.VoteExtension, nil
+	return resp.VoteExtension, resp.NonRpExtension, nil
 }
 
 func (blockExec *BlockExecutor) VerifyVoteExtension(ctx context.Context, vote *types.Vote) error {
