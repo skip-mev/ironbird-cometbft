@@ -332,7 +332,8 @@ message ResponseProcessProposal {
 }
 
 message ResponseExtendVote {
-  bytes vote_extension = 1;
+  bytes vote_extension = 1; // this extension's signature is replay-protected
+  bytes non_rp_extension = 2; // this extension's signature is _not_ replay-protected
 }
 
 message ResponseVerifyVoteExtension {
