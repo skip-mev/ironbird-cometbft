@@ -5,13 +5,12 @@ import (
 	"slices"
 
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
-	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
 )
 
 // tcCommands generates the content of a shell script that includes a list of tc
 // (traffic control) commands to emulate latency from the given node to all
 // other nodes in the testnet.
-func tcCommands(node *e2e.Node, infp infra.Provider) ([]string, error) {
+func tcCommands(node *e2e.Node) ([]string, error) {
 	allZones, zoneMatrix, err := e2e.LoadZoneLatenciesMatrix()
 	if err != nil {
 		return nil, err
@@ -65,9 +64,9 @@ func tcCommands(node *e2e.Node, infp infra.Provider) ([]string, error) {
 			if otherNode.Zone == targetZone || node.Name == otherNode.Name {
 				continue
 			}
-			otherNodeIP := infp.NodeIP(otherNode)
 			// Assign latency handle to target node.
-			tcCmds = append(tcCmds, fmt.Sprintf("tc filter add dev eth0 protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:%d", otherNodeIP, handle))
+			tcCmds = append(tcCmds, fmt.Sprintf("tc filter add dev eth0 protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:%d", otherNode.ExternalIP, handle))
+			tcCmds = append(tcCmds, fmt.Sprintf("tc filter add dev eth0 protocol ip parent 1: prio 1 u32 match ip dst %s/32 flowid 1:%d", otherNode.InternalIP, handle))
 		}
 
 		handle++
