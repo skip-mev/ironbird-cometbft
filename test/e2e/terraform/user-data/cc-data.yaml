@@ -84,7 +84,7 @@ packages:
   - containerd.io
   - nfs-kernel-server
   - dnsmasq
-  # - pssh
+  - pssh
   # - rsync
   - pwgen
   # - kitty-terminfo
@@ -262,6 +262,8 @@ runcmd:
   - date > /etc/done
 # For permissions "too-open" error: "It is required that your private key files are NOT accessible by others."
   - chmod 400 /root/.ssh/id_rsa
+# pssh symlink
+  - ln /usr/bin/parallel-ssh /usr/bin/pssh
 # Start docker service
   - systemctl start docker
   - systemctl enable docker
