@@ -1019,9 +1019,9 @@ func DefaultMempoolConfig() *MempoolConfig {
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
 		EnableDOGProtocol:     true,
-		TargetRedundancy:      0.5,
+		TargetRedundancy:      1,
 		TargetRedundancyDelta: .05,
-		TxsPerAdjustment:      50,
+		TxsPerAdjustment:      500,
 	}
 }
 

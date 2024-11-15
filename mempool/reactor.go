@@ -268,31 +268,13 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 			memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", txKey.Hash()), "sender", senderID)
 			if memR.router != nil {
 				memR.redundancyControl.incDuplicateTxs()
-				redundancy, threshold, _ := memR.redundancyControl.adjustRedundancy()
-				// if sendReset {
-				// 	memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
-				// 	randomPeer := memR.Switch.Peers().Random()
-
-				// 	memR.SendReset(randomPeer)
-				// } else if redundancy >= 0 {
-				// 	memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (block HaveTx)", "redundancy", redundancy)
-				// 	memR.redundancyControl.setBlockHaveTx()
-				// }
-
-				// Update metrics.
-				if redundancy >= 0 {
-					memR.mempool.metrics.Redundancy.Set(redundancy)
-				}
-				if threshold >= 0 {
-					memR.mempool.metrics.RedundancyAdjustmentThreshold.Set(float64(threshold))
-				}
 				if !memR.redundancyControl.isHaveTxBlocked() {
 					ok := sender.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.HaveTx{TxKey: txKey[:]}})
 					if !ok {
 						memR.Logger.Error("Failed to send HaveTx message", "peer", senderID, "txKey", txKey)
 					} else {
 						memR.Logger.Debug("Sent HaveTx message", "tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", senderID)
-						// memR.redundancyControl.setBlockHaveTx()
+						memR.redundancyControl.setBlockHaveTx()
 					}
 				}
 			}
@@ -319,7 +301,6 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 			memR.SendReset(randomPeer)
 		} else if redundancy >= 0 {
 			memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (block HaveTx)", "redundancy", redundancy)
-			memR.redundancyControl.setBlockHaveTx()
 		}
 
 		// Update metrics.
