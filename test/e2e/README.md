@@ -102,17 +102,16 @@ make runner
 
 - Flag `-t DO` is equivalent to `--infrastructure-type digital-ocean`.
 - Flag `--infrastructure-data <file>` (equivalently `-i <file>`) takes as default the file
-  `<testnet-dir>/infra-data.json`.
+  `<testnet-dir>/infra-data.json`, created automatically on `infra-create`.
 - `infra create` performs the following actions in parallel:
-  1. Create testnet nodes in DigitalOcean. On the nodes it also
-installs required tools and dependencies. 
-  1. Create a Command & Control (CC) server in DigitalOcean. It includes:
+  1. Create testnet nodes in DigitalOcean. On the nodes it also installs required tools and dependencies. 
+  2. Create a Command & Control (CC) server in DigitalOcean. It includes:
     - an NFS server to share the app binary with the nodes (in `/data`), 
     - a DNS server, and 
     - monitoring servers (Prometheus and Grafana).
-  2. Run the equivalent of the `build` command to compile and upload the app to `/data` in CC, which
-    can accessed by all nodes via NFS.
-- The flag `--yes` is for not asking for confirmation on `infra create/destroy`.
+  3. Run the equivalent of the `build` command to compile and upload the app to `/data` in CC, which
+     can accessed by all nodes via NFS.
+- The flag `--yes` is for not asking for confirmation on `infra create` and `infra destroy`.
 - `build` compiles locally a binary file and uploads it to `/data` in CC. Use it to change the code
   and upload a new binary to make it available to nodes.
 - `setup --clean` removes the home directory in each node before (re-)deploying the config files.
