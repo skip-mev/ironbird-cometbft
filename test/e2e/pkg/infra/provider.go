@@ -78,7 +78,8 @@ func NewProviderData(
 	// be used for when there's no command.)
 	tf, err := NewTerraform()
 	if err != nil {
-		panic(err)
+		// It will panic later, if tf is ever used.
+		logger.Warn("Could not create Terraform", "err", err)
 	}
 	return ProviderData{
 		Manifest:           manifest,
