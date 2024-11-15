@@ -12,7 +12,7 @@ import (
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
 )
 
-func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
+func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider, useInternalIP bool) error {
 	if len(testnet.Nodes) == 0 {
 		return errors.New("no nodes in testnet")
 	}
@@ -51,7 +51,7 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 		nodesAtZero = append(nodesAtZero, nodeQueue[0])
 		nodeQueue = nodeQueue[1:]
 	}
-	err := p.StartNodes(context.Background(), nodesAtZero...)
+	err := p.StartNodes(context.Background(), useInternalIP, nodesAtZero...)
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 
 		logger.Info("Starting catch up node", "node", node.Name, "height", node.StartAt)
 
-		err := p.StartNodes(context.Background(), node)
+		err := p.StartNodes(context.Background(), useInternalIP, node)
 		if err != nil {
 			return err
 		}

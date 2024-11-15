@@ -66,7 +66,7 @@ func (p *Provider) Cleanup(_ context.Context, _ bool, _ bool) error {
 
 // Setup generates the docker-compose file and write it to disk, erroring if
 // any of these operations fail.
-func (p *Provider) Setup(_ context.Context, _ bool) error {
+func (p *Provider) Setup(_ context.Context, _, _, _ bool) error {
 	compose, err := dockerComposeBytes(p.Testnet)
 	if err != nil {
 		return err
@@ -79,7 +79,7 @@ func (p *Provider) Setup(_ context.Context, _ bool) error {
 	return nil
 }
 
-func (p Provider) StartNodes(ctx context.Context, nodes ...*e2e.Node) error {
+func (p Provider) StartNodes(ctx context.Context, _ bool, nodes ...*e2e.Node) error {
 	nodeNames := make([]string, len(nodes))
 	for i, n := range nodes {
 		nodeNames[i] = n.Name
@@ -87,7 +87,7 @@ func (p Provider) StartNodes(ctx context.Context, nodes ...*e2e.Node) error {
 	return ExecCompose(ctx, p.Testnet.Dir, append([]string{"up", "-d"}, nodeNames...)...)
 }
 
-func (p Provider) StopTestnet(ctx context.Context, _ bool) error {
+func (p Provider) StopTestnet(ctx context.Context, _, _ bool) error {
 	return ExecCompose(ctx, p.Testnet.Dir, "down")
 }
 

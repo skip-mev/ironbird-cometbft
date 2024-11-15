@@ -100,7 +100,7 @@ func NewCLI() *CLI {
 			if err := cli.infp.Cleanup(cmd.Context(), false, false); err != nil {
 				return err
 			}
-			if err := Setup(cmd.Context(), cli.testnet, cli.infp, false); err != nil {
+			if err := Setup(cmd.Context(), cli.testnet, cli.infp, false, false, false); err != nil {
 				return err
 			}
 
@@ -117,7 +117,7 @@ func NewCLI() *CLI {
 				chLoadResult <- err
 			}()
 
-			if err := Start(cmd.Context(), cli.testnet, cli.infp); err != nil {
+			if err := Start(cmd.Context(), cli.testnet, cli.infp, false); err != nil {
 				return err
 			}
 
@@ -276,6 +276,14 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
+			keepAddressBook, err := cmd.Flags().GetBool("keep-address-book")
+			if err != nil {
+				return err
+			}
+			useInternalIP, err := cmd.Flags().GetBool("internal-ip")
+			if err != nil {
+				return err
+			}
 			le, err := cmd.Flags().GetBool("le")
 			if err != nil {
 				return err
@@ -283,29 +291,37 @@ func NewCLI() *CLI {
 			if !le {
 				cli.testnet.LatencyEmulationEnabled = false
 			}
-			return Setup(cmd.Context(), cli.testnet, cli.infp, clean)
+			return Setup(cmd.Context(), cli.testnet, cli.infp, clean, keepAddressBook, useInternalIP)
 		},
 	}
-	setupCmd.PersistentFlags().Bool("clean", true, "Clean home directory before deploying the new config files.")
-	// FIX: latency emulation should be run before setup, but currently it needs testnet.
-	setupCmd.PersistentFlags().Bool("le", true, "Run latency emulation script.")
+	setupCmd.PersistentFlags().Bool("clean", true, "Clean home directory before deploying the new config files (DigitalOcean only).")
+	setupCmd.PersistentFlags().Bool("keep-address-book", true, "Keep address book (topology) when cleaning is enabled (DigitalOcean only).")
+	setupCmd.PersistentFlags().Bool("internal-ip", false, "Use nodes' internal IP addresses. For running from inside a DO private network.")
+	// FIX: latency emulation should be run before setup, but currently it depends on testnet.
+	setupCmd.PersistentFlags().Bool("le", true, "Run latency emulation script (DigitalOcean only).")
 	cli.root.AddCommand(&setupCmd)
 
-	cli.root.AddCommand(&cobra.Command{
+	startCmd := &cobra.Command{
 		Use:     "start",
 		Short:   "Starts the testnet, waiting for nodes to become available",
 		PreRunE: cli.initInfraWithTestnet,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := os.Stat(cli.testnet.Dir)
 			if errors.Is(err, fs.ErrNotExist) {
-				err = Setup(cmd.Context(), cli.testnet, cli.infp, false)
+				err = Setup(cmd.Context(), cli.testnet, cli.infp, false, false, false)
 			}
 			if err != nil {
 				return err
 			}
-			return Start(cmd.Context(), cli.testnet, cli.infp)
+			useInternalIP, err := cmd.Flags().GetBool("internal-ip")
+			if err != nil {
+				return err
+			}
+			return Start(cmd.Context(), cli.testnet, cli.infp, useInternalIP)
 		},
-	})
+	}
+	startCmd.PersistentFlags().Bool("internal-ip", false, "Use nodes' internal IP addresses. For running from inside a DO private network.")
+	cli.root.AddCommand(startCmd)
 
 	cli.root.AddCommand(&cobra.Command{
 		Use:     "perturb",
@@ -338,10 +354,15 @@ func NewCLI() *CLI {
 			if err != nil {
 				return err
 			}
-			return cli.infp.StopTestnet(context.Background(), force)
+			useInternalIP, err := cmd.Flags().GetBool("internal-ip")
+			if err != nil {
+				return err
+			}
+			return cli.infp.StopTestnet(context.Background(), force, useInternalIP)
 		},
 	}
 	stopCmd.PersistentFlags().Bool("force", false, "Kill and restart Docker.")
+	stopCmd.PersistentFlags().Bool("internal-ip", false, "Use nodes' internal IP addresses. For running from inside a DO private network.")
 	cli.root.AddCommand(&stopCmd)
 
 	loadCmd := &cobra.Command{
@@ -568,7 +589,7 @@ Does not run any perturbations.
 			if err := cli.infp.Cleanup(cmd.Context(), false, false); err != nil {
 				return err
 			}
-			if err := Setup(cmd.Context(), cli.testnet, cli.infp, false); err != nil {
+			if err := Setup(cmd.Context(), cli.testnet, cli.infp, false, false, false); err != nil {
 				return err
 			}
 
@@ -583,7 +604,7 @@ Does not run any perturbations.
 				chLoadResult <- err
 			}()
 
-			if err := Start(cmd.Context(), cli.testnet, cli.infp); err != nil {
+			if err := Start(cmd.Context(), cli.testnet, cli.infp, false); err != nil {
 				return err
 			}
 

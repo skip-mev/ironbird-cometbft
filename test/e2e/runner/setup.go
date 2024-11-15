@@ -45,7 +45,7 @@ const (
 )
 
 // Setup sets up the testnet configuration.
-func Setup(ctx context.Context, testnet *e2e.Testnet, infp infra.Provider, clean bool) error {
+func Setup(ctx context.Context, testnet *e2e.Testnet, infp infra.Provider, clean, keepAddressBook, useInternalIP bool) error {
 	logger.Info("setup", "msg", log.NewLazySprintf("Generating testnet files in %#q", testnet.Dir))
 	startTime := time.Now()
 	defer func(t time.Time) { logger.Debug(fmt.Sprintf("Setup time: %s\n", time.Since(t))) }(startTime)
@@ -123,7 +123,7 @@ func Setup(ctx context.Context, testnet *e2e.Testnet, infp infra.Provider, clean
 		if testnet.LatencyEmulationEnabled {
 			// Generate a shell script file containing tc (traffic control) commands
 			// to emulate latency to other nodes.
-			tcCmds, err := tcCommands(node, infp)
+			tcCmds, err := tcCommands(node)
 			if err != nil {
 				return err
 			}
@@ -148,7 +148,7 @@ func Setup(ctx context.Context, testnet *e2e.Testnet, infp infra.Provider, clean
 	}
 
 	//nolint: revive
-	if err := infp.Setup(ctx, clean); err != nil {
+	if err := infp.Setup(ctx, clean, keepAddressBook, useInternalIP); err != nil {
 		return err
 	}
 

@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cometbft/cometbft/config"
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 	"github.com/cometbft/cometbft/test/e2e/pkg/exec"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
@@ -124,7 +125,7 @@ func (p *Provider) Cleanup(ctx context.Context, exceptCC, confirm bool) error {
 }
 
 // Setup uploads the generated config files to each node.
-func (p *Provider) Setup(ctx context.Context, clean bool) error {
+func (p *Provider) Setup(ctx context.Context, clean, keepAddressBook, useInternalIP bool) error {
 	for _, n := range p.Testnet.Nodes {
 		if n.ClockSkew != 0 {
 			return fmt.Errorf("node %q contains clock skew configuration (not supported on DO)", n.Name)
@@ -148,7 +149,12 @@ func (p *Provider) Setup(ctx context.Context, clean bool) error {
 			}
 
 			// Copy to remote.
-			remoteLocation := "root@" + n.ExternalIP.String() + ":/root/" + remoteFile
+			nodeIP := n.ExternalIP.String()
+			if useInternalIP {
+				nodeIP = n.InternalIP.String()
+				// nodeIP = n.Name # prefix l-
+			}
+			remoteLocation := "root@" + nodeIP + ":/root/" + remoteFile
 			cmd := fmt.Sprintf("scp -r %s %s %s", sshOpts, tgzFile, remoteLocation)
 			if err := exec.Command(groupCtx, "/bin/sh", "-c", cmd); err != nil {
 				return fmt.Errorf("%s: %w", n.Name, err)
@@ -162,12 +168,22 @@ func (p *Provider) Setup(ctx context.Context, clean bool) error {
 	}
 
 	p.Logger.Debug("Uncompress config files remotely", "clean", clean)
-	nodeIPs := p.allNodeIPs()
 	cmd := fmt.Sprintf("cp /root/%s %s && cd %s && tar -xvzf %s", remoteFile, remoteDir, remoteDir, remoteFile)
 	if clean {
+		addrbookPath := filepath.Join(remoteDir, config.DefaultConfigDir, config.DefaultAddrBookName)
+		// Save address book.
+		cmd1 := fmt.Sprintf("(cp %s /root 2>/dev/null || true) && ", addrbookPath)
 		// Clean home directory before copying config files.
-		cmd = fmt.Sprintf("rm -rdf %s && mkdir -p %s && %s", remoteDir, remoteDir, cmd)
+		cmd2 := fmt.Sprintf("rm -rdf %s && mkdir -p %s && ", remoteDir, remoteDir)
+		// Restore address book.
+		cmd3 := fmt.Sprintf("(cp /root/%s %s 2>/dev/null || true) && ", config.DefaultAddrBookName, addrbookPath)
+		if keepAddressBook {
+			cmd = cmd1 + cmd2 + cmd3 + cmd
+		} else {
+			cmd = cmd2 + cmd
+		}
 	}
+	nodeIPs := p.allNodeIPs(useInternalIP)
 	err := pssh(ctx, nodeIPs, cmd)
 	if err != nil {
 		return err
@@ -183,26 +199,28 @@ func (p *Provider) Setup(ctx context.Context, clean bool) error {
 	return nil
 }
 
-func (p *Provider) StartNodes(ctx context.Context, nodes ...*e2e.Node) error {
+func (p *Provider) StartNodes(ctx context.Context, useInternalIP bool, nodes ...*e2e.Node) error {
 	nodeIPs := make([]string, len(nodes))
 	for i, n := range nodes {
-		nodeIPs[i] = n.ExternalIP.String()
+		if useInternalIP {
+			nodeIPs[i] = n.InternalIP.String()
+		} else {
+			nodeIPs[i] = n.ExternalIP.String()
+		}
 	}
 	p.Logger.Debug("Start app in nodes", "num", len(nodes))
 	if err := pssh(ctx, nodeIPs, "systemctl start testappd"); err != nil {
 		return err
 	}
-	// Defer logging because of delayed output from pssh.
-	defer p.logMonitorInfo(ctx)
 	return nil
 }
 
-func (p *Provider) StopTestnet(ctx context.Context, force bool) error {
+func (p *Provider) StopTestnet(ctx context.Context, force, useInternalIP bool) error {
 	p.Logger.Debug("Stop app in nodes", "force", force)
 	if force {
-		return pssh(ctx, p.allNodeIPs(), "systemctl kill testappd")
+		return pssh(ctx, p.allNodeIPs(useInternalIP), "systemctl kill testappd")
 	}
-	return pssh(ctx, p.allNodeIPs(), "systemctl stop testappd")
+	return pssh(ctx, p.allNodeIPs(useInternalIP), "systemctl stop testappd")
 }
 
 func (*Provider) Disconnect(ctx context.Context, node *e2e.Node) error {
@@ -242,10 +260,14 @@ func (Provider) NodeIP(node *e2e.Node) net.IP {
 }
 
 // The IP addresses of all nodes in the testnet.
-func (p *Provider) allNodeIPs() []string {
+func (p *Provider) allNodeIPs(useInternalIP bool) []string {
 	ips := make([]string, len(p.Testnet.Nodes))
 	for i, node := range p.Testnet.Nodes {
-		ips[i] = node.ExternalIP.String()
+		if useInternalIP {
+			ips[i] = node.InternalIP.String()
+		} else {
+			ips[i] = node.ExternalIP.String()
+		}
 	}
 	return ips
 }

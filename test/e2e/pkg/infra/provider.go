@@ -19,7 +19,7 @@ type Provider interface {
 
 	// Setup generates any necessary configuration for the infrastructure
 	// provider during testnet setup.
-	Setup(ctx context.Context, clean bool) error
+	Setup(ctx context.Context, clean, keepAddressBook, useInternalIP bool) error
 
 	// Build creates a Docker image with the node binary.
 	Build(ctx context.Context, fast bool) error
@@ -27,10 +27,10 @@ type Provider interface {
 	// Starts the nodes passed as parameter. A nodes MUST NOT
 	// be started twice before calling StopTestnet
 	// If no nodes are passed, start the whole network
-	StartNodes(ctx context.Context, nodes ...*e2e.Node) error
+	StartNodes(ctx context.Context, useInternalIP bool, nodes ...*e2e.Node) error
 
 	// Stops the whole network
-	StopTestnet(ctx context.Context, force bool) error
+	StopTestnet(ctx context.Context, force, useInternalIP bool) error
 
 	// Cleanup destroys all remote infra resources and removes local data.
 	Cleanup(ctx context.Context, exceptCC bool, confirm bool) error
