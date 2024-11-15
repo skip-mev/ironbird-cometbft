@@ -114,6 +114,18 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "redundancy",
 			Help:      "",
 		}, labels).With(labelsAndValues...),
+		FirstTimeTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "first_time_txs",
+			Help:      "",
+		}, labels).With(labelsAndValues...),
+		DuplicateTxs: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
+			Namespace: namespace,
+			Subsystem: MetricsSubsystem,
+			Name:      "duplicate_txs",
+			Help:      "",
+		}, labels).With(labelsAndValues...),
 		RecheckDurationSeconds: prometheus.NewGaugeFrom(stdprometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
@@ -141,6 +153,8 @@ func NopMetrics() *Metrics {
 		ResetMsgsSent:             discard.NewCounter(),
 		DisabledRoutes:            discard.NewGauge(),
 		Redundancy:                discard.NewGauge(),
+		FirstTimeTxs:              discard.NewGauge(),
+		DuplicateTxs:              discard.NewGauge(),
 		RecheckDurationSeconds:    discard.NewGauge(),
 	}
 }

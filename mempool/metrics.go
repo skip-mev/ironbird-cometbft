@@ -79,6 +79,9 @@ type Metrics struct {
 
 	Redundancy metrics.Gauge
 
+	FirstTimeTxs metrics.Gauge
+	DuplicateTxs metrics.Gauge
+
 	// Cumulative time spent rechecking transactions
 	RecheckDurationSeconds metrics.Gauge
 }

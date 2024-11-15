@@ -268,6 +268,9 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 			memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", txKey.Hash()), "sender", senderID)
 			if memR.router != nil {
 				memR.redundancyControl.incDuplicateTxs()
+				f, d := memR.redundancyControl.getCounters()
+				memR.mempool.metrics.FirstTimeTxs.Set(float64(f))
+				memR.mempool.metrics.DuplicateTxs.Set(float64(d))
 				if !memR.redundancyControl.isHaveTxBlocked() {
 					ok := sender.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.HaveTx{TxKey: txKey[:]}})
 					if !ok {
@@ -593,6 +596,15 @@ func (r *redundancyControl) incFirstTimeTxs() {
 	r.firstTimeTxs++
 }
 
+func (r *redundancyControl) getCounters() (f int64, d int64) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	f = r.firstTimeTxs
+	d = r.duplicates
+	return f, d
+}
+
 // Note: temporarily return threshold to update metrics.
 func (r *redundancyControl) adjustRedundancy() (float64, bool) {
 	r.mtx.Lock()
@@ -600,6 +612,7 @@ func (r *redundancyControl) adjustRedundancy() (float64, bool) {
 
 	// Is it time for an adjustment?
 	if r.firstTimeTxs+r.duplicates < r.txsPerAdjustment {
+		// What if the node is not receiving anything (first+dup==0) because it was eclipsed? It should send Reset periodically.
 		return -1, false
 	}
 
