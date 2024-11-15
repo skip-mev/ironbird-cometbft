@@ -9,8 +9,8 @@ LOAD=400
 CONN=1 # total load is $LOAD * $CONN
 TARGET_REDUNDANCIES=(0.1 0.5 1 2)
 TXS_PER_ADJUSTMENT=(50 100 500 1000)
-TEST_DURATION_MAIN=1200 # 20 min
-TEST_DURATION_DOG=1200
+# TEST_DURATION=1200 # 20 min
+TEST_DURATION=600 # 10 min
 
 # run once
 make runner
@@ -32,10 +32,10 @@ run_instance() {
     wait # until sleeping has finished
     
     # Keep laptop awake while loading (only MacOS)
-    caffeinate -u -t $TEST_DURATION_DOG &
+    caffeinate -u -t $TEST_DURATION &
     
     # load txs from CC
-    ssh_cc ./build/runner -f $MANIFEST -t DO load -r $LOAD -c $CONN -T $TEST_DURATION_DOG --internal-ip
+    ssh_cc ./build/runner -f $MANIFEST -t DO load -r $LOAD -c $CONN -T $TEST_DURATION --internal-ip
     
     ./build/runner -f $MANIFEST -t DO stop
 }
