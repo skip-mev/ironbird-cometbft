@@ -77,6 +77,7 @@ func (memR *Reactor) OnStart() error {
 	if memR.config.EnableDOGProtocol {
 		memR.router = newGossipRouter()
 		memR.redundancyControl = newRedundancyControl(memR.config)
+		go memR.redundancyControl.adjustRedundancy()
 	}
 	return nil
 }
@@ -294,7 +295,13 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 	if memR.router != nil {
 		// Adjust redundancy.
 		memR.redundancyControl.incFirstTimeTxs()
-		redundancy, threshold, sendReset := memR.redundancyControl.adjustRedundancy()
+		memR.redundancyControl.mtx.RLock()
+
+		redundancy := memR.redundancyControl.redundancy
+		threshold := memR.redundancyControl.threshold
+		sendReset := memR.redundancyControl.sendReset
+		memR.redundancyControl.mtx.RUnlock()
+
 		if sendReset {
 			memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
 			randomPeer := memR.Switch.Peers().Random()
@@ -560,6 +567,14 @@ type redundancyControl struct {
 
 	// If true, do not send HaveTx messages.
 	blockHaveTx atomic.Bool
+
+	timeoutTicker   *time.Timer
+	timeoutInterval time.Duration
+	missedChecks    int64
+
+	redundancy float64
+	threshold  int64
+	sendReset  bool
 }
 
 func newRedundancyControl(config *cfg.MempoolConfig) *redundancyControl {
@@ -568,6 +583,7 @@ func newRedundancyControl(config *cfg.MempoolConfig) *redundancyControl {
 		txsPerAdjustment: config.TxsPerAdjustment,
 		lowerBound:       config.TargetRedundancy - targetRedundancyDeltaAbs,
 		upperBound:       config.TargetRedundancy + targetRedundancyDeltaAbs,
+		timeoutTicker:    time.NewTimer(time.Second),
 	}
 }
 
@@ -594,33 +610,44 @@ func (r *redundancyControl) incFirstTimeTxs() {
 }
 
 // Note: temporarily return threshold to update metrics.
-func (r *redundancyControl) adjustRedundancy() (float64, int64, bool) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
+func (r *redundancyControl) adjustRedundancy() {
 
-	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
+	for {
+		select {
+		case <-r.timeoutTicker.C:
 
-	// Is it time for an adjustment?
-	if redundancy == 0 {
-		return -1, -1, false
+			r.mtx.Lock()
+
+			r.redundancy = float64(r.duplicates) / float64(r.firstTimeTxs)
+
+			r.threshold = int64(max(10, min(1000, float64(r.txsPerAdjustment)/r.redundancy)))
+			if r.firstTimeTxs < r.threshold || r.redundancy == 0 {
+
+				r.missedChecks++
+
+				if r.missedChecks >= 2 {
+					r.timeoutInterval *= 2
+				}
+
+			}
+
+			// Adjust redundancy level by asking peers either (1) to send more txs (with
+			// Reset messages) or (2) to send less txs (unblocking HaveTx messages).
+			r.sendReset = false
+			if r.redundancy < r.lowerBound {
+				r.sendReset = true
+				r.missedChecks--
+			} else if r.redundancy >= r.upperBound {
+				r.blockHaveTx.Store(false)
+				r.missedChecks--
+			}
+			r.mtx.Unlock()
+			fmt.Println("MissedCheck::", r.missedChecks)
+			// Reset counters.
+			r.firstTimeTxs = 0
+			r.duplicates = 0
+			r.timeoutTicker.Reset(r.timeoutInterval)
+			// TODO has to have passed memR quit to kill the thread
+		}
 	}
-	threshold := int64(max(10, min(1000, float64(r.txsPerAdjustment)/redundancy)))
-	if r.firstTimeTxs < threshold {
-		return -1, threshold, false
-	}
-
-	// Adjust redundancy level by asking peers either (1) to send more txs (with
-	// Reset messages) or (2) to send less txs (unblocking HaveTx messages).
-	sendReset := false
-	if redundancy < r.lowerBound {
-		sendReset = true
-	} else if redundancy >= r.upperBound {
-		r.blockHaveTx.Store(false)
-	}
-
-	// Reset counters.
-	r.firstTimeTxs = 0
-	r.duplicates = 0
-
-	return redundancy, threshold, sendReset
 }
