@@ -76,7 +76,8 @@ func (memR *Reactor) OnStart() error {
 	}
 	if memR.config.EnableDOGProtocol {
 		memR.router = newGossipRouter()
-		memR.redundancyControl = newRedundancyControl(memR)
+		memR.redundancyControl = newRedundancyControl(memR.config)
+		go memR.redundancyControl.controlLoop(memR)
 	}
 	return nil
 }
@@ -451,7 +452,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 type p2pIDSet = map[nodekey.ID]struct{}
 
-// TODO: move to its own file.
 type gossipRouter struct {
 	mtx cmtsync.RWMutex
 	// A set of `source -> target` routes that are disabled for disseminating transactions. Source
@@ -562,110 +562,104 @@ func (r *gossipRouter) numRoutes() int {
 	return count
 }
 
-// TODO: move to its own file.
 type redundancyControl struct {
 	// Pre-computed upper and lower bounds of accepted redundancy.
 	lowerBound float64
 	upperBound float64
 
-	// To adjust redundancy periodically.
-	ticker         *time.Ticker
+	// Timer to adjust redundancy periodically.
+	adjustTicker   *time.Ticker
 	adjustInterval time.Duration
 
+	// Counters for calculating the redundancy level.
 	mtx          cmtsync.RWMutex
 	firstTimeTxs int64 // number of transactions received for the first time
-	duplicates   int64 // number of duplicate transactions
+	duplicateTxs int64 // number of duplicate transactions
 
 	// If true, do not send HaveTx messages.
 	haveTxBlocked atomic.Bool
-
-	metrics *Metrics
 }
 
-func newRedundancyControl(memR *Reactor) *redundancyControl {
-	adjustInterval := memR.config.AdjustRedundancyInterval
-	targetRedundancyDeltaAbs := memR.config.TargetRedundancy * memR.config.TargetRedundancyDelta
-	ticker := time.NewTicker(adjustInterval)
-	rc := redundancyControl{
-		lowerBound:     memR.config.TargetRedundancy - targetRedundancyDeltaAbs,
-		upperBound:     memR.config.TargetRedundancy + targetRedundancyDeltaAbs,
-		ticker:         ticker,
+func newRedundancyControl(config *cfg.MempoolConfig) *redundancyControl {
+	adjustInterval := config.AdjustRedundancyInterval
+	targetRedundancyDeltaAbs := config.TargetRedundancy * config.TargetRedundancyDelta
+	return &redundancyControl{
+		lowerBound:     config.TargetRedundancy - targetRedundancyDeltaAbs,
+		upperBound:     config.TargetRedundancy + targetRedundancyDeltaAbs,
+		adjustTicker:   time.NewTicker(adjustInterval),
 		adjustInterval: adjustInterval,
-		metrics:        memR.mempool.metrics,
 	}
-
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				redundancy, res := rc.adjustRedundancy()
-				if res < 0 {
-					memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
-					// Send reset to random peer.
-					randomPeer := memR.Switch.Peers().Random()
-					memR.SendReset(randomPeer)
-				} else if res > 0 {
-					memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (unblock HaveTx)", "redundancy", redundancy)
-					// Unblock HaveTx.
-					rc.haveTxBlocked.Store(false)
-				}
-			case <-memR.Quit():
-				return
-			}
-		}
-	}()
-	return &rc
 }
 
-// adjustRedundancy returns the current redundancy level and a number equal to:
-//   - -1 if redundancy is less than the lower bound
-//   - 0 if redundancy is within acceptable bounds
-//   - 1 if redundancy is higher than the upper bound
-func (r *redundancyControl) adjustRedundancy() (float64, int) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
+func (rc *redundancyControl) controlLoop(memR *Reactor) {
+	for {
+		select {
+		case <-rc.adjustTicker.C:
+			// Update metrics before resetting counters.
+			memR.mempool.metrics.FirstTimeTxs.Set(float64(rc.firstTimeTxs))
+			memR.mempool.metrics.DuplicateTxs.Set(float64(rc.duplicateTxs))
 
-	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
+			// Compute current redundancy level and reset transaction counters.
+			redundancy := rc.currentRedundancy()
 
-	// Update metrics.
-	r.metrics.Redundancy.Set(redundancy)
-	r.metrics.FirstTimeTxs.Set(float64(r.firstTimeTxs))
-	r.metrics.DuplicateTxs.Set(float64(r.duplicates))
+			// Update metrics.
+			memR.mempool.metrics.Redundancy.Set(redundancy)
+
+			// If redundancy level is low, ask peers for more txs.
+			if redundancy < rc.lowerBound {
+				memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
+				// Send Reset message to random peer.
+				randomPeer := memR.Switch.Peers().Random()
+				memR.SendReset(randomPeer)
+			}
+
+			// If redundancy level is high, ask peers for less txs.
+			if redundancy >= rc.upperBound {
+				memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (unblock HaveTx)", "redundancy", redundancy)
+				// Unblock HaveTx messages.
+				rc.haveTxBlocked.Store(false)
+			}
+		case <-memR.Quit():
+			return
+		}
+	}
+}
+
+// currentRedundancy returns the current redundancy level and it resets the counters.
+func (rc *redundancyControl) currentRedundancy() float64 {
+	rc.mtx.Lock()
+	defer rc.mtx.Unlock()
+
+	var redundancy float64
+	if rc.firstTimeTxs != 0 {
+		redundancy = float64(rc.duplicateTxs) / float64(rc.firstTimeTxs)
+	}
 
 	// Reset counters.
-	r.firstTimeTxs, r.duplicates = 0, 0
+	rc.firstTimeTxs, rc.duplicateTxs = 0, 0
 
-	// If redundancy level is low, ask peers for more txs (Reset)
-	if redundancy < r.lowerBound {
-		return redundancy, -1
-	}
-
-	// If redundancy level is high, ask peers for less txs (HaveTx)
-	if redundancy >= r.upperBound {
-		return redundancy, 1
-	}
-
-	return redundancy, 0
+	return redundancy
 }
 
-func (r *redundancyControl) incDuplicateTxs() {
-	r.mtx.Lock()
-	r.duplicates++
-	r.mtx.Unlock()
+func (rc *redundancyControl) incDuplicateTxs() {
+	rc.mtx.Lock()
+	rc.duplicateTxs++
+	rc.mtx.Unlock()
 }
 
-func (r *redundancyControl) incFirstTimeTxs() {
-	r.mtx.Lock()
-	r.firstTimeTxs++
-	r.mtx.Unlock()
+func (rc *redundancyControl) incFirstTimeTxs() {
+	rc.mtx.Lock()
+	rc.firstTimeTxs++
+	rc.mtx.Unlock()
 }
 
-func (r *redundancyControl) isHaveTxBlocked() bool {
-	return r.haveTxBlocked.Load()
+func (rc *redundancyControl) isHaveTxBlocked() bool {
+	return rc.haveTxBlocked.Load()
 }
 
-// Block sending of HaveTx messages and restart timer to adjust redundancy.
-func (r *redundancyControl) blockHaveTx() {
-	r.haveTxBlocked.Store(true)
-	r.ticker.Reset(r.adjustInterval)
+// blockHaveTx blocks sending HaveTx messages and restarts the timer that
+// adjusts redundancy.
+func (rc *redundancyControl) blockHaveTx() {
+	rc.haveTxBlocked.Store(true)
+	rc.adjustTicker.Reset(rc.adjustInterval)
 }
