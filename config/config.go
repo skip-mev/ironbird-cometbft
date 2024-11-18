@@ -993,10 +993,10 @@ type MempoolConfig struct {
 	// TargetRedundancyDelta is a value in the range [0,1) as a percentage of
 	// TargetRedundancy. It defines the minimum and maximum bounds of redundancy
 	// that should be considered valid.
-	EnableDOGProtocol     bool    `mapstructure:"enable_dog_protocol"`
-	TargetRedundancy      float64 `mapstructure:"target_redundancy"`
-	TargetRedundancyDelta float64 `mapstructure:"target_redundancy_delta"`
-	TxsPerAdjustment      int64   `mapstructure:"txs_per_adjustment"`
+	EnableDOGProtocol        bool          `mapstructure:"enable_dog_protocol"`
+	TargetRedundancy         float64       `mapstructure:"target_redundancy"`
+	TargetRedundancyDelta    float64       `mapstructure:"target_redundancy_delta"`
+	AdjustRedundancyInterval time.Duration `mapstructure:"adjust_redundancy_interval"`
 }
 
 // DefaultMempoolConfig returns a default configuration for the CometBFT mempool.
@@ -1014,10 +1014,10 @@ func DefaultMempoolConfig() *MempoolConfig {
 		CacheSize:   10000,
 		ExperimentalMaxGossipConnectionsToNonPersistentPeers: 0,
 		ExperimentalMaxGossipConnectionsToPersistentPeers:    0,
-		EnableDOGProtocol:     true,
-		TargetRedundancy:      1,
-		TargetRedundancyDelta: .05,
-		TxsPerAdjustment:      500,
+		EnableDOGProtocol:        true,
+		TargetRedundancy:         1,
+		TargetRedundancyDelta:    .2,
+		AdjustRedundancyInterval: 1000 * time.Millisecond,
 	}
 }
 

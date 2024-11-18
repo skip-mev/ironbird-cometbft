@@ -386,7 +386,7 @@ experimental_publish_event_pending_tx = {{ .Mempool.ExperimentalPublishEventPend
 enable_dog_protocol = {{ .Mempool.EnableDOGProtocol }}
 target_redundancy = {{ .Mempool.TargetRedundancy }}
 target_redundancy_delta = {{ .Mempool.TargetRedundancyDelta }}
-txs_per_adjustment = {{ .Mempool.TxsPerAdjustment }}
+adjust_redundancy_interval = "{{ .Mempool.AdjustRedundancyInterval }}"
 
 #######################################################
 ###         State Sync Configuration Options        ###

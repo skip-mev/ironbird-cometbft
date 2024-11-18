@@ -76,7 +76,7 @@ func (memR *Reactor) OnStart() error {
 	}
 	if memR.config.EnableDOGProtocol {
 		memR.router = newGossipRouter()
-		memR.redundancyControl = newRedundancyControl(memR.config)
+		memR.redundancyControl = newRedundancyControl(memR)
 	}
 	return nil
 }
@@ -196,18 +196,19 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 			memR.Logger.Debug("Received HaveTx", "from", senderID, "txKey", txKey)
 
 			if memR.router != nil {
-				sources, err := memR.mempool.GetSenders(txKey)
-				if err != nil || len(sources) == 0 || sources[0] == noSender {
-					// Probably tx and sender got removed from the mempool.
-					memR.Logger.Error("Received HaveTx but failed to get sender", "tx", txKey.Hash(), "err", err)
+				// Get tx's list of senders.
+				senders, err := memR.mempool.GetSenders(txKey)
+				if err != nil || len(senders) == 0 || senders[0] == noSender {
+					// It is possible that tx got removed from the mempool.
+					memR.Logger.Debug("Received HaveTx but failed to get sender", "tx", txKey.Hash(), "err", err)
 					return
 				}
 
-				// Do not gossip to the peer that send us HaveTx any transaction coming from the source of txKey.
-				// TODO: Pick a random source?
-				sourceID := sources[0]
-				memR.router.disableRoute(sourceID, senderID)
-				memR.Logger.Debug("Disable route", "source", sourceID, "target", senderID)
+				// Disable route with tx's first sender as source and peer as target.
+				memR.router.disableRoute(senders[0], senderID)
+				memR.Logger.Debug("Disable route", "source", senders[0], "target", senderID)
+
+				// Update metrics.
 				memR.mempool.metrics.HaveTxMsgsReceived.With("from", string(senderID)).Add(1)
 				memR.mempool.metrics.DisabledRoutes.Set(float64(memR.router.numRoutes()))
 			}
@@ -215,6 +216,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case *protomem.Reset:
 			memR.Logger.Debug("Received Reset", "from", senderID)
 			if memR.router != nil {
+				// TODO: reset all routes with sender or just one random route.
 				memR.router.resetRoutes(senderID)
 				memR.mempool.metrics.DisabledRoutes.Set(float64(memR.router.numRoutes()))
 			}
@@ -266,19 +268,18 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 		switch {
 		case errors.Is(err, ErrTxInCache):
 			memR.Logger.Debug("Tx already exists in cache", "tx", log.NewLazySprintf("%X", txKey.Hash()), "sender", senderID)
-			if memR.router != nil {
+			if memR.redundancyControl != nil {
 				memR.redundancyControl.incDuplicateTxs()
-				f, d := memR.redundancyControl.getCounters()
-				memR.mempool.metrics.FirstTimeTxs.Set(float64(f))
-				memR.mempool.metrics.DuplicateTxs.Set(float64(d))
-				if !memR.redundancyControl.isHaveTxBlocked() {
-					ok := sender.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.HaveTx{TxKey: txKey[:]}})
-					if !ok {
-						memR.Logger.Error("Failed to send HaveTx message", "peer", senderID, "txKey", txKey)
-					} else {
-						memR.Logger.Debug("Sent HaveTx message", "tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", senderID)
-						memR.redundancyControl.setBlockHaveTx()
-					}
+				if memR.redundancyControl.isHaveTxBlocked() {
+					return nil, err
+				}
+				ok := sender.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.HaveTx{TxKey: txKey[:]}})
+				if !ok {
+					memR.Logger.Error("Failed to send HaveTx message", "peer", senderID, "txKey", txKey)
+				} else {
+					memR.Logger.Debug("Sent HaveTx message", "tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", senderID)
+					// Block HaveTx and restart timer, during which time, sending HaveTx is not allowed.
+					memR.redundancyControl.blockHaveTx()
 				}
 			}
 			return nil, err
@@ -294,22 +295,8 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 		}
 	}
 
-	if memR.router != nil {
-		// Adjust redundancy.
+	if memR.redundancyControl != nil {
 		memR.redundancyControl.incFirstTimeTxs()
-		redundancy, sendReset := memR.redundancyControl.adjustRedundancy()
-		if sendReset {
-			memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
-			randomPeer := memR.Switch.Peers().Random()
-			memR.SendReset(randomPeer)
-		} else if redundancy >= 0 {
-			memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (block HaveTx)", "redundancy", redundancy)
-		}
-
-		// Update metrics.
-		if redundancy >= 0 {
-			memR.mempool.metrics.Redundancy.Set(redundancy)
-		}
 	}
 
 	return reqRes, nil
@@ -380,16 +367,6 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 			continue
 		}
 
-		txKey := entry.Tx().Key()
-
-		// Check whether any route to this peer is enabled.
-		senders := entry.Senders()
-		if memR.router != nil && !memR.router.areRoutesEnabled(senders, peer.ID()) {
-			memR.Logger.Debug("Disabled route: do not send transaction to peer",
-				"tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", peer.ID(), "senders", senders)
-			continue
-		}
-
 		// If we suspect that the peer is lagging behind, at least by more than
 		// one block, we don't send the transaction immediately. This code
 		// reduces the mempool size and the recheck-tx rate of the receiving
@@ -418,6 +395,28 @@ func (memR *Reactor) broadcastTxRoutine(peer p2p.Peer) {
 
 		// NOTE: Transaction batching was disabled due to
 		// https://github.com/tendermint/tendermint/issues/5796
+
+		// We are paying the cost of computing the transaction hash in
+		// any case, even when logger level > debug. So it only once.
+		// See: https://github.com/cometbft/cometbft/issues/4167
+		txKey := entry.Tx().Key()
+		txHash := txKey.Hash()
+
+		if memR.router != nil {
+			// Check if there's any route enabled from any of tx's senders to
+			// peer.
+			senders := entry.Senders()
+			if !memR.router.isAnyRouteEnabled(senders, peer.ID()) {
+				memR.Logger.Debug("Disabled route: do not send transaction to peer",
+					"tx", log.NewLazySprintf("%X", txKey.Hash()), "peer", peer.ID(), "senders", senders)
+				continue
+			}
+		} else if entry.IsSender(peer.ID()) {
+			// Do not send this transaction if we receive it from peer.
+			memR.Logger.Debug("Skipping transaction, peer is sender",
+				"tx", log.NewLazySprintf("%X", txHash), "peer", peer.ID())
+			continue
+		}
 
 		for {
 			// The entry may have been removed from the mempool since it was
@@ -505,9 +504,9 @@ func (r *gossipRouter) isRouteEnabled(source, target nodekey.ID) bool {
 	return true
 }
 
-// areRoutesEnabled returns false iff all the routes from the list of sources to
-// target are disabled.
-func (r *gossipRouter) areRoutesEnabled(sources []nodekey.ID, target nodekey.ID) bool {
+// isAnyRouteEnabled returns true iff at least one route from a source in the
+// given list of sources to the given target is enabled.
+func (r *gossipRouter) isAnyRouteEnabled(sources []nodekey.ID, target nodekey.ID) bool {
 	if len(sources) == 0 {
 		return true
 	}
@@ -548,88 +547,108 @@ func (r *gossipRouter) numRoutes() int {
 
 // TODO: move to its own file.
 type redundancyControl struct {
-	txsPerAdjustment int64
-
 	// Pre-computed upper and lower bounds of accepted redundancy.
 	lowerBound float64
 	upperBound float64
+
+	// To adjust redundancy periodically.
+	ticker         *time.Ticker
+	adjustInterval time.Duration
 
 	mtx          cmtsync.RWMutex
 	firstTimeTxs int64 // number of transactions received for the first time
 	duplicates   int64 // number of duplicate transactions
 
 	// If true, do not send HaveTx messages.
-	blockHaveTx atomic.Bool
+	haveTxBlocked atomic.Bool
+
+	metrics *Metrics
 }
 
-func newRedundancyControl(config *cfg.MempoolConfig) *redundancyControl {
-	targetRedundancyDeltaAbs := config.TargetRedundancy * config.TargetRedundancyDelta
-	fmt.Printf("target: %f, delta: %f", config.TargetRedundancy, targetRedundancyDeltaAbs)
-	fmt.Printf("lowerBound: %f", config.TargetRedundancy-targetRedundancyDeltaAbs)
-	fmt.Printf("upperBound: %f", config.TargetRedundancy+targetRedundancyDeltaAbs)
-	return &redundancyControl{
-		txsPerAdjustment: config.TxsPerAdjustment,
-		lowerBound:       config.TargetRedundancy - targetRedundancyDeltaAbs,
-		upperBound:       config.TargetRedundancy + targetRedundancyDeltaAbs,
+func newRedundancyControl(memR *Reactor) *redundancyControl {
+	adjustInterval := memR.config.AdjustRedundancyInterval
+	targetRedundancyDeltaAbs := memR.config.TargetRedundancy * memR.config.TargetRedundancyDelta
+	ticker := time.NewTicker(adjustInterval)
+	rc := redundancyControl{
+		lowerBound:     memR.config.TargetRedundancy - targetRedundancyDeltaAbs,
+		upperBound:     memR.config.TargetRedundancy + targetRedundancyDeltaAbs,
+		ticker:         ticker,
+		adjustInterval: adjustInterval,
+		metrics:        memR.mempool.metrics,
 	}
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				redundancy, res := rc.adjustRedundancy()
+				if res < 0 {
+					memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
+					// Send reset to random peer.
+					randomPeer := memR.Switch.Peers().Random()
+					memR.SendReset(randomPeer)
+				} else if res > 0 {
+					memR.Logger.Debug("TX redundancy ABOVE upper limit: decrease it (unblock HaveTx)", "redundancy", redundancy)
+					// Unblock HaveTx.
+					rc.haveTxBlocked.Store(false)
+				}
+			case <-memR.Quit():
+				return
+			}
+		}
+	}()
+	return &rc
 }
 
-func (r *redundancyControl) setBlockHaveTx() {
-	r.blockHaveTx.Store(true)
-}
+// adjustRedundancy returns the current redundancy level and a number equal to:
+//   - -1 if redundancy is less than the lower bound
+//   - 0 if redundancy is within acceptable bounds
+//   - 1 if redundancy is higher than the upper bound
+func (r *redundancyControl) adjustRedundancy() (float64, int) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
-func (r *redundancyControl) isHaveTxBlocked() bool {
-	return r.blockHaveTx.Load()
+	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
+
+	// Update metrics.
+	r.metrics.Redundancy.Set(redundancy)
+	r.metrics.FirstTimeTxs.Set(float64(r.firstTimeTxs))
+	r.metrics.DuplicateTxs.Set(float64(r.duplicates))
+
+	// Reset counters.
+	r.firstTimeTxs, r.duplicates = 0, 0
+
+	// If redundancy level is low, ask peers for more txs (Reset)
+	if redundancy < r.lowerBound {
+		return redundancy, -1
+	}
+
+	// If redundancy level is high, ask peers for less txs (HaveTx)
+	if redundancy >= r.upperBound {
+		return redundancy, 1
+	}
+
+	return redundancy, 0
 }
 
 func (r *redundancyControl) incDuplicateTxs() {
 	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
 	r.duplicates++
+	r.mtx.Unlock()
 }
 
 func (r *redundancyControl) incFirstTimeTxs() {
 	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
 	r.firstTimeTxs++
+	r.mtx.Unlock()
 }
 
-func (r *redundancyControl) getCounters() (f int64, d int64) {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-
-	f = r.firstTimeTxs
-	d = r.duplicates
-	return f, d
+func (r *redundancyControl) isHaveTxBlocked() bool {
+	return r.haveTxBlocked.Load()
 }
 
-// Note: temporarily return threshold to update metrics.
-func (r *redundancyControl) adjustRedundancy() (float64, bool) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	// Is it time for an adjustment?
-	if r.firstTimeTxs+r.duplicates < r.txsPerAdjustment {
-		// What if the node is not receiving anything (first+dup==0) because it was eclipsed? It should send Reset periodically.
-		return -1, false
-	}
-
-	redundancy := float64(r.duplicates) / float64(r.firstTimeTxs)
-
-	// Adjust redundancy level by asking peers either (1) to send more txs (with
-	// Reset messages) or (2) to send less txs (unblocking HaveTx messages).
-	sendReset := false
-	if redundancy < r.lowerBound {
-		sendReset = true
-	} else if redundancy >= r.upperBound {
-		r.blockHaveTx.Store(false)
-	}
-
-	// Reset counters.
-	r.firstTimeTxs = 0
-	r.duplicates = 0
-
-	return redundancy, sendReset
+// Block sending of HaveTx messages and restart timer to adjust redundancy.
+func (r *redundancyControl) blockHaveTx() {
+	r.haveTxBlocked.Store(true)
+	r.ticker.Reset(r.adjustInterval)
 }
