@@ -16,635 +16,835 @@ config = [
 	# "p2p.max_header_bytes = 2097152",
 
 	# "mempool.enable_dog_protocol = true",
-	# "mempool.target_redundancy = .5",
-    # "mempool.target_redundancy_delta = .05",
-	# "mempool.txs_per_adjustment = 100",
+	# "mempool.target_redundancy = 1",
+    # "mempool.target_redundancy_delta = .2",
+	# "mempool.adjust_redundancy_interval = 1000ms",
 ]
 
 [node.seed0]
 mode = "seed"
 persistent_peers = ["seed1", "seed2", "seed3", "seed4"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.seed1]
 mode = "seed"
 persistent_peers = ["seed0", "seed2", "seed3", "seed4"]
 zone = "Canada"
+perturb = ["kill"]
 [node.seed2]
 mode = "seed"
 persistent_peers = ["seed1", "seed0", "seed3", "seed4"]
 zone = "N_California"
+perturb = ["kill"]
 [node.seed3]
 mode = "seed"
 persistent_peers = ["seed1", "seed2", "seed0", "seed4"]
 zone = "London"
+perturb = ["kill"]
 [node.seed4]
 mode = "seed"
 persistent_peers = ["seed1", "seed2", "seed3", "seed0"]
 zone = "Oregon"
 
+perturb = ["kill"]
 [node.full00]
 mode = "full"
 seeds = ["seed0"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.full01]
 mode = "full"
 seeds = ["seed1"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.full02]
 mode = "full"
 seeds = ["seed2"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.full03]
 mode = "full"
 seeds = ["seed3"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.full04]
 mode = "full"
 seeds = ["seed4"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.full05]
 mode = "full"
 seeds = ["seed0"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.full06]
 mode = "full"
 seeds = ["seed1"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.full07]
 mode = "full"
 seeds = ["seed2"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.full08]
 mode = "full"
 seeds = ["seed3"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.full09]
 mode = "full"
 seeds = ["seed4"]
 zone = "Canada"
+perturb = ["kill"]
 [node.full10]
 mode = "full"
 seeds = ["seed0"]
 zone = "N_California"
+perturb = ["kill"]
 [node.full11]
 mode = "full"
 seeds = ["seed1"]
 zone = "London"
+perturb = ["kill"]
 [node.full12]
 mode = "full"
 seeds = ["seed2"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.full13]
 mode = "full"
 seeds = ["seed3"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.full14]
 mode = "full"
 seeds = ["seed4"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.full15]
 mode = "full"
 seeds = ["seed0"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.full16]
 mode = "full"
 seeds = ["seed1"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.full17]
 mode = "full"
 seeds = ["seed2"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.full18]
 mode = "full"
 seeds = ["seed3"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.full19]
 mode = "full"
 seeds = ["seed4"]
 zone = "Seoul"
 
+perturb = ["kill"]
 [node.validator000]
 seeds = ["seed0"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator001]
 seeds = ["seed1"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator002]
 seeds = ["seed2"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator003]
 seeds = ["seed3"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator004]
 seeds = ["seed4"]
 zone = "London"
+perturb = ["kill"]
 [node.validator005]
 seeds = ["seed0"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator006]
 seeds = ["seed1"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator007]
 seeds = ["seed2"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator008]
 seeds = ["seed3"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator009]
 seeds = ["seed4"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator010]
 seeds = ["seed0"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator011]
 seeds = ["seed1"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator012]
 seeds = ["seed2"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator013]
 seeds = ["seed3"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator014]
 seeds = ["seed4"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator015]
 seeds = ["seed0"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator016]
 seeds = ["seed1"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator017]
 seeds = ["seed2"]
 zone = "London"
+perturb = ["kill"]
 [node.validator018]
 seeds = ["seed3"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator019]
 seeds = ["seed4"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator020]
 seeds = ["seed0"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator021]
 seeds = ["seed1"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator022]
 seeds = ["seed2"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator023]
 seeds = ["seed3"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator024]
 seeds = ["seed4"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator025]
 seeds = ["seed0"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator026]
 seeds = ["seed1"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator027]
 seeds = ["seed2"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator028]
 seeds = ["seed3"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator029]
 seeds = ["seed4"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator030]
 seeds = ["seed0"]
 zone = "London"
+perturb = ["kill"]
 [node.validator031]
 seeds = ["seed1"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator032]
 seeds = ["seed2"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator033]
 seeds = ["seed3"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator034]
 seeds = ["seed4"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator035]
 seeds = ["seed0"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator036]
 seeds = ["seed1"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator037]
 seeds = ["seed2"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator038]
 seeds = ["seed3"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator039]
 seeds = ["seed4"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator040]
 seeds = ["seed0"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator041]
 seeds = ["seed1"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator042]
 seeds = ["seed2"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator043]
 seeds = ["seed3"]
 zone = "London"
+perturb = ["kill"]
 [node.validator044]
 seeds = ["seed4"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator045]
 seeds = ["seed0"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator046]
 seeds = ["seed1"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator047]
 seeds = ["seed2"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator048]
 seeds = ["seed3"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator049]
 seeds = ["seed4"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator050]
 seeds = ["seed0"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator051]
 seeds = ["seed1"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator052]
 seeds = ["seed2"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator053]
 seeds = ["seed3"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator054]
 seeds = ["seed4"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator055]
 seeds = ["seed0"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator056]
 seeds = ["seed1"]
 zone = "London"
+perturb = ["kill"]
 [node.validator057]
 seeds = ["seed2"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator058]
 seeds = ["seed3"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator059]
 seeds = ["seed4"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator060]
 seeds = ["seed0"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator061]
 seeds = ["seed1"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator062]
 seeds = ["seed2"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator063]
 seeds = ["seed3"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator064]
 seeds = ["seed4"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator065]
 seeds = ["seed0"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator066]
 seeds = ["seed1"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator067]
 seeds = ["seed2"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator068]
 seeds = ["seed3"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator069]
 seeds = ["seed4"]
 zone = "London"
+perturb = ["kill"]
 [node.validator070]
 seeds = ["seed0"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator071]
 seeds = ["seed1"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator072]
 seeds = ["seed2"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator073]
 seeds = ["seed3"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator074]
 seeds = ["seed4"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator075]
 seeds = ["seed0"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator076]
 seeds = ["seed1"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator077]
 seeds = ["seed2"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator078]
 seeds = ["seed3"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator079]
 seeds = ["seed4"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator080]
 seeds = ["seed0"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator081]
 seeds = ["seed1"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator082]
 seeds = ["seed2"]
 zone = "London"
+perturb = ["kill"]
 [node.validator083]
 seeds = ["seed3"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator084]
 seeds = ["seed4"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator085]
 seeds = ["seed0"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator086]
 seeds = ["seed1"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator087]
 seeds = ["seed2"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator088]
 seeds = ["seed3"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator089]
 seeds = ["seed4"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator090]
 seeds = ["seed0"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator091]
 seeds = ["seed1"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator092]
 seeds = ["seed2"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator093]
 seeds = ["seed3"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator094]
 seeds = ["seed4"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator095]
 seeds = ["seed0"]
 zone = "London"
+perturb = ["kill"]
 [node.validator096]
 seeds = ["seed1"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator097]
 seeds = ["seed2"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator098]
 seeds = ["seed3"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator099]
 seeds = ["seed4"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator100]
 seeds = ["seed0"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator101]
 seeds = ["seed1"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator102]
 seeds = ["seed2"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator103]
 seeds = ["seed3"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator104]
 seeds = ["seed4"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator105]
 seeds = ["seed0"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator106]
 seeds = ["seed1"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator107]
 seeds = ["seed2"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator108]
 seeds = ["seed3"]
 zone = "London"
+perturb = ["kill"]
 [node.validator109]
 seeds = ["seed4"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator110]
 seeds = ["seed0"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator111]
 seeds = ["seed1"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator112]
 seeds = ["seed2"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator113]
 seeds = ["seed3"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator114]
 seeds = ["seed4"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator115]
 seeds = ["seed0"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator116]
 seeds = ["seed1"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator117]
 seeds = ["seed2"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator118]
 seeds = ["seed3"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator119]
 seeds = ["seed4"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator120]
 seeds = ["seed0"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator121]
 seeds = ["seed1"]
 zone = "London"
+perturb = ["kill"]
 [node.validator122]
 seeds = ["seed2"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator123]
 seeds = ["seed3"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator124]
 seeds = ["seed4"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator125]
 seeds = ["seed0"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator126]
 seeds = ["seed1"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator127]
 seeds = ["seed2"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator128]
 seeds = ["seed3"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator129]
 seeds = ["seed4"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator130]
 seeds = ["seed0"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator131]
 seeds = ["seed1"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator132]
 seeds = ["seed2"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator133]
 seeds = ["seed3"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator134]
 seeds = ["seed4"]
 zone = "London"
+perturb = ["kill"]
 [node.validator135]
 seeds = ["seed0"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator136]
 seeds = ["seed1"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator137]
 seeds = ["seed2"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator138]
 seeds = ["seed3"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator139]
 seeds = ["seed4"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator140]
 seeds = ["seed0"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator141]
 seeds = ["seed1"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator142]
 seeds = ["seed2"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator143]
 seeds = ["seed3"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator144]
 seeds = ["seed4"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator145]
 seeds = ["seed0"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator146]
 seeds = ["seed1"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator147]
 seeds = ["seed2"]
 zone = "London"
+perturb = ["kill"]
 [node.validator148]
 seeds = ["seed3"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator149]
 seeds = ["seed4"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator150]
 seeds = ["seed0"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator151]
 seeds = ["seed1"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator152]
 seeds = ["seed2"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator153]
 seeds = ["seed3"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator154]
 seeds = ["seed4"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator155]
 seeds = ["seed0"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator156]
 seeds = ["seed1"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator157]
 seeds = ["seed2"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator158]
 seeds = ["seed3"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator159]
 seeds = ["seed4"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator160]
 seeds = ["seed0"]
 zone = "London"
+perturb = ["kill"]
 [node.validator161]
 seeds = ["seed1"]
 zone = "Oregon"
+perturb = ["kill"]
 [node.validator162]
 seeds = ["seed2"]
 zone = "Ireland"
+perturb = ["kill"]
 [node.validator163]
 seeds = ["seed3"]
 zone = "Frankfurt"
+perturb = ["kill"]
 [node.validator164]
 seeds = ["seed4"]
 zone = "S_Paulo"
+perturb = ["kill"]
 [node.validator165]
 seeds = ["seed0"]
 zone = "Tokyo"
+perturb = ["kill"]
 [node.validator166]
 seeds = ["seed1"]
 zone = "Mumbai"
+perturb = ["kill"]
 [node.validator167]
 seeds = ["seed2"]
 zone = "Sydney"
+perturb = ["kill"]
 [node.validator168]
 seeds = ["seed3"]
 zone = "Seoul"
+perturb = ["kill"]
 [node.validator169]
 seeds = ["seed4"]
 zone = "Singapore"
+perturb = ["kill"]
 [node.validator170]
 seeds = ["seed0"]
 zone = "N_Virginia"
+perturb = ["kill"]
 [node.validator171]
 seeds = ["seed1"]
 zone = "Canada"
+perturb = ["kill"]
 [node.validator172]
 seeds = ["seed2"]
 zone = "N_California"
+perturb = ["kill"]
 [node.validator173]
 seeds = ["seed3"]
 zone = "London"
+perturb = ["kill"]
 [node.validator174]
 seeds = ["seed4"]
 zone = "Oregon"
+perturb = ["kill"]
