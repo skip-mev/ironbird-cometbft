@@ -162,7 +162,7 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, _ any) {
 		// Remove all routes with peer as source or target.
 		memR.router.resetRoutes(peer.ID())
 
-		// Broadcast Reset to all peers except sender.
+		// Broadcast Reset to all peers except the disconnected peer.
 		memR.Switch.Peers().ForEach(func(p p2p.Peer) {
 			if p.ID() != peer.ID() {
 				memR.SendReset(p)
@@ -216,8 +216,7 @@ func (memR *Reactor) Receive(e p2p.Envelope) {
 		case *protomem.Reset:
 			memR.Logger.Debug("Received Reset", "from", senderID)
 			if memR.router != nil {
-				// TODO: reset all routes with sender or just one random route.
-				memR.router.resetRoutes(senderID)
+				memR.router.resetRandomRouteWithTarget(senderID)
 				memR.mempool.metrics.DisabledRoutes.Set(float64(memR.router.numRoutes()))
 			}
 
@@ -529,6 +528,24 @@ func (r *gossipRouter) resetRoutes(peerID nodekey.ID) {
 	// Remove peer as target.
 	for _, targets := range r.disabledRoutes {
 		delete(targets, peerID)
+	}
+}
+
+// resetRandomRouteWithTarget removes a random disabled route that has nodeID as
+// target.
+func (r *gossipRouter) resetRandomRouteWithTarget(nodeID nodekey.ID) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	for _, targets := range r.disabledRoutes {
+		// Find the first target that is peerID and remove it.
+		// FIX: make it really random.
+		for target := range targets {
+			if target == nodeID {
+				delete(targets, nodeID)
+				return
+			}
+		}
 	}
 }
 
