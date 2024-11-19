@@ -5,12 +5,13 @@ set -e
 MANIFEST=${1:-networks/200-nodes-dog.toml}
 # MANIFEST=networks/7-nodes.toml
 
-LOAD=400
-CONN=1 # total load is $LOAD * $CONN
-TARGET_REDUNDANCIES=(0.1 0.5 1 2)
-TXS_PER_ADJUSTMENT=(50 100 500 1000)
+LOAD=200 # total load is $LOAD * $CONN
+CONN=2
+TARGET_REDUNDANCIES=(0.1 0.5 1)
+ADJUST_INTERVALS=("500ms" "1000ms" "2000ms")
+TEST_DURATION=1800 # 30 min
 # TEST_DURATION=1200 # 20 min
-TEST_DURATION=600 # 10 min
+# TEST_DURATION=600 # 10 min
 
 # run once
 make runner
@@ -33,6 +34,9 @@ run_instance() {
     
     # Keep laptop awake while loading (only MacOS)
     caffeinate -u -t $TEST_DURATION &
+
+    # Perturb nodes in parallel.
+    sleep 30 && gtimeout $TEST_DURATION ./build/runner -f $MANIFEST -t DO perturb &
     
     # load txs from CC
     ssh_cc ./build/runner -f $MANIFEST -t DO load -r $LOAD -c $CONN -T $TEST_DURATION --internal-ip
@@ -43,17 +47,19 @@ run_instance() {
 # Baseline (DOG disabled)
 sed -i.bak -e "s/.*enable_dog_protocol.*/\t\"mempool.enable_dog_protocol = false\",/g" $MANIFEST 
 run_instance
+sleep 60
 
 # DOG enabled
 sed -i.bak -e "s/.*enable_dog_protocol.*/\t\"mempool.enable_dog_protocol = true\",/g" $MANIFEST 
 for TARGET in ${TARGET_REDUNDANCIES[@]}; do
     # change target manifest
     sed -i.bak -e "s/.*target_redundancy .*/\t\"mempool.target_redundancy = $TARGET\",/g" $MANIFEST 
-    for TPA in ${TXS_PER_ADJUSTMENT[@]}; do
-        sed -i.bak -e "s/.*txs_per_adjustment .*/\t\"mempool.txs_per_adjustment = $TPA\",/g" $MANIFEST 
-        echo 🟢 TARGET: $TARGET, TPA: $TPA
+    for INTERVAL in ${ADJUST_INTERVALS[@]}; do
+        sed -i.bak -e "s/.*adjust_redundancy_interval .*/\t\"mempool.adjust_redundancy_interval = $INTERVAL\",/g" $MANIFEST 
+        echo 🟢 TARGET: $TARGET, INTERVAL: $INTERVAL
         run_instance
     done
+    sleep 60
 done
 
 # TODO: download prometheus data (it may be huge)
