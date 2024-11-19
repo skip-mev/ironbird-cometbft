@@ -601,6 +601,11 @@ func (rc *redundancyControl) controlLoop(memR *Reactor) {
 
 			// Compute current redundancy level and reset transaction counters.
 			redundancy := rc.currentRedundancy()
+			if redundancy == 0 {
+				// There were no transactions in the last iteration. Do not send
+				// Reset messages; keep the current set of disabled routes.
+				continue
+			}
 
 			// Update metrics.
 			memR.mempool.metrics.Redundancy.Set(redundancy)
