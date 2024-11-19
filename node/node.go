@@ -90,6 +90,7 @@ type Node struct {
 	txIndexer         txindex.TxIndexer
 	blockIndexer      indexer.BlockIndexer
 	indexerService    *txindex.IndexerService
+	grpcSrv           *grpcserver.Server
 	prometheusSrv     *http.Server
 	pprofSrv          *http.Server
 }
@@ -896,28 +897,28 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 	}
 
 	if n.config.GRPC.ListenAddress != "" {
-		listener, err := grpcserver.Listen(n.config.GRPC.ListenAddress)
-		if err != nil {
-			return nil, err
-		}
-		opts := []grpcserver.Option{
-			grpcserver.WithLogger(n.Logger),
-		}
+		srvCfg := grpcserver.NewConfig(n.Logger, n.config.GRPC.ListenAddress)
+
 		if n.config.GRPC.VersionService.Enabled {
-			opts = append(opts, grpcserver.WithVersionService())
+			srvCfg = srvCfg.WithVersionService()
 		}
 		if n.config.GRPC.BlockService.Enabled {
-			opts = append(opts, grpcserver.WithBlockService(n.blockStore, n.eventBus, n.Logger))
+			srvCfg = srvCfg.WithBlockService(n.blockStore, n.eventBus)
 		}
 		if n.config.GRPC.BlockResultsService.Enabled {
-			opts = append(opts, grpcserver.WithBlockResultsService(n.blockStore, n.stateStore, n.Logger))
+			srvCfg = srvCfg.WithBlockResultsService(n.blockStore, n.stateStore)
 		}
-		go func() {
-			if err := grpcserver.Serve(listener, opts...); err != nil {
-				n.Logger.Error("Error starting gRPC server", "err", err)
-			}
-		}()
-		listeners = append(listeners, listener)
+
+		grpcSrv, err := grpcserver.New(srvCfg)
+		if err != nil {
+			return listeners, fmt.Errorf("configuring gRPC server: %w", err)
+		}
+
+		n.grpcSrv = grpcSrv
+
+		if err := grpcSrv.Serve(); err != nil {
+			return listeners, fmt.Errorf("starting gRPC server: %w", err)
+		}
 	}
 
 	if n.config.GRPC.Privileged.ListenAddress != "" {
