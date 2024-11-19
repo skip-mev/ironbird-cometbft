@@ -160,15 +160,10 @@ func (memR *Reactor) RemovePeer(peer p2p.Peer, _ any) {
 	memR.Logger.Debug("Remove peer: send Reset to other peers", "peer", peer.ID())
 
 	if memR.router != nil {
-		// Remove all routes with peer as source or target.
+		// Remove all routes with peer as source or target and immediately
+		// adjust redundancy.
 		memR.router.resetRoutes(peer.ID())
-
-		// Broadcast Reset to all peers except the disconnected peer.
-		memR.Switch.Peers().ForEach(func(p p2p.Peer) {
-			if p.ID() != peer.ID() {
-				memR.SendReset(p)
-			}
-		})
+		memR.redundancyControl.triggerAdjustment()
 
 		// Update metrics.
 		memR.mempool.metrics.DisabledRoutes.Set(float64(memR.router.numRoutes()))
@@ -666,5 +661,11 @@ func (rc *redundancyControl) isHaveTxBlocked() bool {
 // adjusts redundancy.
 func (rc *redundancyControl) blockHaveTx() {
 	rc.haveTxBlocked.Store(true)
+	// Wait until next adjustment to check if HaveTx messages should be unblocked.
+	rc.adjustTicker.Reset(rc.adjustInterval)
+}
+
+func (rc *redundancyControl) triggerAdjustment() {
+	<-rc.adjustTicker.C
 	rc.adjustTicker.Reset(rc.adjustInterval)
 }
