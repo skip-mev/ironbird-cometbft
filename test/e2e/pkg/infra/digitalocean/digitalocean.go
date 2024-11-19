@@ -239,6 +239,10 @@ func (*Provider) Reconnect(ctx context.Context, node *e2e.Node) error {
 	return pssh(ctx, []string{node.ExternalIP.String()}, strings.Join(cmds, " && "))
 }
 
+func (p *Provider) Kill(ctx context.Context, node *e2e.Node) error {
+	return ssh(ctx, node.ExternalIP.String(), "systemctl kill testappd")
+}
+
 func (*Provider) Logs(ctx context.Context, tail bool, node *e2e.Node) error {
 	if node == nil {
 		return errors.New("node name must be provided when using DO infra")

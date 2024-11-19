@@ -99,6 +99,10 @@ func (p Provider) Reconnect(ctx context.Context, node *e2e.Node) error {
 	return Exec(ctx, "network", "connect", p.Testnet.Name+"_"+p.Testnet.Name, node.Name)
 }
 
+func (p Provider) Kill(ctx context.Context, node *e2e.Node) error {
+	return ExecCompose(context.Background(), p.DataDir, "kill", "-s", "SIGKILL", node.Name)
+}
+
 func (p Provider) Logs(ctx context.Context, tail bool, node *e2e.Node) error {
 	if node != nil {
 		if tail {

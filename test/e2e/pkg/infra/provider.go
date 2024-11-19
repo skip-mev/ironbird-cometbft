@@ -42,6 +42,8 @@ type Provider interface {
 	// This should only be called after Disconnect
 	Reconnect(ctx context.Context, name *e2e.Node) error
 
+	Kill(ctx context.Context, node *e2e.Node) error
+
 	Logs(ctx context.Context, tail bool, node *e2e.Node) error
 
 	// Returns the provider's infrastructure data

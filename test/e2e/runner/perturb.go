@@ -12,6 +12,8 @@ import (
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra/docker"
 )
 
+const perturbInterval = 10 * time.Second
+
 // Perturbs a running testnet.
 func Perturb(ctx context.Context, testnet *e2e.Testnet, ifp infra.Provider) error {
 	for _, node := range testnet.Nodes {
@@ -20,7 +22,8 @@ func Perturb(ctx context.Context, testnet *e2e.Testnet, ifp infra.Provider) erro
 			if err != nil {
 				return err
 			}
-			time.Sleep(3 * time.Second) // give network some time to recover between each
+			// Give network some time to recover between each perturbation.
+			time.Sleep(perturbInterval)
 		}
 	}
 	return nil
@@ -56,10 +59,10 @@ func PerturbNode(ctx context.Context, node *e2e.Node, perturbation e2e.Perturbat
 
 	case e2e.PerturbationKill:
 		logger.Info("perturb node", "msg", log.NewLazySprintf("Killing node %v...", node.Name))
-		if err := docker.ExecCompose(context.Background(), testnet.Dir, "kill", "-s", "SIGKILL", name); err != nil {
+		if err := ifp.Kill(ctx, node); err != nil {
 			return nil, err
 		}
-		if err := docker.ExecCompose(context.Background(), testnet.Dir, "start", name); err != nil {
+		if err := ifp.StartNodes(ctx, false, node); err != nil {
 			return nil, err
 		}
 		if node.PersistInterval == 0 {
