@@ -458,6 +458,10 @@ message ExtendedVoteInfo {
   bytes extension_signature = 4;
   // block_id_flag indicates whether the validator voted for a block, nil, or did not vote at all
   tendermint.types.BlockIDFlag block_id_flag = 5;
+  // Non-deterministic non-replay-protected extension provided by the sending validator's application.
+  bytes nrp_vote_extension = 6;
+  // Signature on non-replay-protected extension created by CometBFT
+  bytes nrp_extension_signature = 7;
 
   reserved 2; // signed_last_block
 }
