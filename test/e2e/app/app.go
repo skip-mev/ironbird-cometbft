@@ -20,6 +20,7 @@ import (
 	"github.com/cometbft/cometbft/crypto"
 	cryptoenc "github.com/cometbft/cometbft/crypto/encoding"
 	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/libs/protoio"
 	cryptoproto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -372,7 +373,7 @@ func (app *Application) ApplySnapshotChunk(_ context.Context, req *abci.RequestA
 //
 // Additionally, we verify the vote extension signatures passed from CometBFT and
 // include all data necessary for such verification in the special transaction's
-// payload so that ProcessProposal at other nodes can also verify the proposer
+// payload so that ProcessProposal at other nodes can also 	verify the proposer
 // constructed the special transaction correctly.
 //
 // If vote extensions are enabled for the current height, PrepareProposal makes
@@ -498,7 +499,8 @@ func (app *Application) ExtendVote(_ context.Context, req *abci.RequestExtendVot
 
 	app.logger.Info("generated vote extension", "num", num, "ext", fmt.Sprintf("%x", ext[:extLen]), "height", appHeight)
 	return &abci.ResponseExtendVote{
-		VoteExtension: ext[:extLen],
+		VoteExtension:  ext[:extLen],
+		NonRpExtension: []byte("some non-rp extension"),
 	}, nil
 }
 
@@ -684,18 +686,17 @@ func (app *Application) verifyAndSum(
 		if len(chainID) == 0 {
 			panic("chainID not set in database")
 		}
-		// cve := cmtproto.CanonicalVoteExtension{
-		// 	Extension: vote.VoteExtension,
-		// 	Height:    currentHeight - 1, // the vote extension was signed in the previous height
-		// 	Round:     int64(extCommit.Round),
-		// 	ChainId:   chainID,
-		// }
-		// extSignBytes, err := protoio.MarshalDelimited(&cve)
-		// if err != nil {
-		// 	return 0, fmt.Errorf("error when marshaling signed bytes: %w", err)
-		// }
 
-		extSignBytes := vote.VoteExtension
+		cve := cmtproto.CanonicalVoteExtension{
+			Extension: vote.VoteExtension,
+			Height:    currentHeight - 1, // the vote extension was signed in the previous height
+			Round:     int64(extCommit.Round),
+			ChainId:   chainID,
+		}
+		extSignBytes, err := protoio.MarshalDelimited(&cve)
+		if err != nil {
+			return 0, fmt.Errorf("error when marshaling signed bytes: %w", err)
+		}
 
 		//... and verify
 		valAddr := crypto.Address(vote.Validator.Address).String()
@@ -718,6 +719,9 @@ func (app *Application) verifyAndSum(
 		}
 		if !pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature) {
 			return 0, errors.New("received vote with invalid signature")
+		}
+		if !pubKey.VerifySignature(vote.NrpVoteExtension, vote.NrpExtensionSignature) {
+			return 0, errors.New("received vote with invalid signature of nrp vote extension")
 		}
 
 		extValue, err := parseVoteExtension(vote.VoteExtension)

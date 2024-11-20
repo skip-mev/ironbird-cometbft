@@ -70,7 +70,7 @@ type Vote struct {
 	ValidatorAddress        Address                `json:"validator_address"`
 	ValidatorIndex          int32                  `json:"validator_index"`
 	Signature               []byte                 `json:"signature"`
-	Extension               []byte                 `json:"extension"` //TODO VSCODE "Find all refences here"
+	Extension               []byte                 `json:"extension"` //TODO bernd "Find all refences here"
 	ExtensionSignature      []byte                 `json:"extension_signature"`
 	NonRpExtension          []byte                 `json:"non_rp_extension"`
 	NonRpExtensionSignature []byte                 `json:"non_rp_extension_signature"`
@@ -135,9 +135,11 @@ func (vote *Vote) ExtendedCommitSig() ExtendedCommitSig {
 	}
 
 	return ExtendedCommitSig{
-		CommitSig:          vote.CommitSig(),
-		Extension:          vote.Extension,
-		ExtensionSignature: vote.ExtensionSignature,
+		CommitSig:               vote.CommitSig(),
+		Extension:               vote.Extension,
+		ExtensionSignature:      vote.ExtensionSignature,
+		NonRpExtension:          vote.NonRpExtension,
+		NonRpExtensionSignature: vote.NonRpExtensionSignature,
 	}
 }
 
@@ -253,22 +255,17 @@ func (vote *Vote) VerifyVoteAndExtension(chainID string, pubKey crypto.PubKey) e
 	}
 	// We only verify vote extension signatures for non-nil precommits.
 	if vote.Type == cmtproto.PrecommitType && !ProtoBlockIDIsNil(&v.BlockID) {
-		// TODO @Bernd: cross check that this is the correct way to handle this
-		if len(vote.ExtensionSignature) == 0 && len(vote.NonRpExtensionSignature) == 0 {
+		if len(vote.ExtensionSignature) == 0 || len(vote.NonRpExtensionSignature) == 0 {
 			return errors.New("expected vote extension signature")
 		}
 
 		extSignBytes, nonRpExtSignBytes := VoteExtensionSignBytes(chainID, v)
-		if len(vote.ExtensionSignature) > 0 {
-			if !pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature) {
-				return ErrVoteInvalidSignature
-			}
+		if !pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature) {
+			return ErrVoteInvalidSignature
 		}
 
-		if len(vote.NonRpExtensionSignature) > 0 {
-			if !pubKey.VerifySignature(nonRpExtSignBytes, vote.NonRpExtensionSignature) {
-				return ErrVoteInvalidSignature
-			}
+		if !pubKey.VerifySignature(nonRpExtSignBytes, vote.NonRpExtensionSignature) {
+			return ErrVoteInvalidSignature
 		}
 	}
 	return nil
@@ -451,7 +448,7 @@ func SignAndCheckVote(
 
 	isNil := vote.BlockID.IsZero()
 	extSignature := (len(v.ExtensionSignature) > 0)
-	nonRpExtSignature := (len(v.NonRpExtensionSignature) > 0) //TODO add `non_rp_ext_signature` to vote's proto
+	nonRpExtSignature := (len(v.NonRpExtensionSignature) > 0)
 
 	// Error if prevote contains an extension signature
 	if (extSignature || nonRpExtSignature) && (!isPrecommit || isNil) {
@@ -460,6 +457,7 @@ func SignAndCheckVote(
 	}
 
 	vote.ExtensionSignature = nil
+	vote.NonRpExtensionSignature = nil
 	if extensionsEnabled {
 		// Error if missing extension signature for non-nil Precommit
 		if (!extSignature || !nonRpExtSignature) && isPrecommit && !isNil {

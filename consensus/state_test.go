@@ -1659,6 +1659,12 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 		[]byte("extension 2"),
 		[]byte("extension 3"),
 	}
+	nrpVoteExtensions := [][]byte{
+		[]byte("nrp-extension 0"),
+		[]byte("nrp-extension 1"),
+		[]byte("nrp-extension 2"),
+		[]byte("nrp-extension 3"),
+	}
 
 	m := abcimocks.NewApplication(t)
 	m.On("ExtendVote", mock.Anything, mock.Anything).Return(&abci.ResponseExtendVote{
@@ -1700,7 +1706,8 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 
 	// create a precommit for each validator with the associated vote extension.
 	for i, vs := range vss[1:] {
-		signAddPrecommitWithExtension(t, cs1, blockID.Hash, blockID.PartSetHeader, voteExtensions[i+1], vs)
+		signAddPrecommitWithExtension(t, cs1, blockID.Hash, blockID.PartSetHeader,
+			voteExtensions[i+1], nrpVoteExtensions[i+1], vs)
 	}
 
 	ensurePrevote(voteCh, height, round)
@@ -1915,13 +1922,14 @@ func TestVoteExtensionEnableHeight(t *testing.T) {
 			signAddVotes(cs1, cmtproto.PrevoteType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), false, vss[1:]...)
 			ensurePrevoteMatch(t, voteCh, height, round, rs.ProposalBlock.Hash())
 
-			var ext []byte
+			var ext, nrpExt []byte
 			if testCase.hasExtension {
 				ext = []byte("extension")
+				nrpExt = []byte("nrp-extension")
 			}
 
 			for _, vs := range vss[1:] {
-				vote, err := vs.signVote(cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), ext, testCase.hasExtension)
+				vote, err := vs.signVote(cmtproto.PrecommitType, rs.ProposalBlock.Hash(), rs.ProposalBlockParts.Header(), ext, nrpExt, testCase.hasExtension)
 				require.NoError(t, err)
 				addVotes(cs1, vote)
 			}
@@ -2582,9 +2590,10 @@ func signAddPrecommitWithExtension(
 	hash []byte,
 	header types.PartSetHeader,
 	extension []byte,
+	nrpExtension []byte,
 	stub *validatorStub,
 ) {
-	v, err := stub.signVote(cmtproto.PrecommitType, hash, header, extension, true)
+	v, err := stub.signVote(cmtproto.PrecommitType, hash, header, extension, nrpExtension, true)
 	require.NoError(t, err, "failed to sign vote")
 	addVotes(cs, v)
 }
