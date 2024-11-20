@@ -1,35 +1,39 @@
 #!/usr/bin/env bash
 
-set -e
+set -ex
 
 MANIFEST=${1:-networks/200-nodes-dog.toml}
 # MANIFEST=networks/7-nodes.toml
 
 LOAD=200 # total load is $LOAD * $CONN
-CONN=2
+CONN=1
 TARGET_REDUNDANCIES=(0.1 0.5 1)
 ADJUST_INTERVALS=("500ms" "1000ms" "2000ms")
 TEST_DURATION=1800 # 30 min
-# TEST_DURATION=1200 # 20 min
-# TEST_DURATION=600 # 10 min
 
 # run once
 make runner
 ./build/runner -f $MANIFEST -t DO infra create --yes
 
-# to be able to run `runner load` from CC
+# Compile and upload runner to CC
+./scripts/upload-runner.sh $MANIFEST
+
+# Open Grafana
+open "$CC_ADDR:3000"
+
+# Run command from CC
 TESTNET_DIR=${MANIFEST%.toml}
 CC_ADDR=$(cat $TESTNET_DIR/.cc-ip)
 ssh_cc() {
     ssh -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null root@$CC_ADDR -t "$@"
 }
-./scripts/upload-runner.sh $MANIFEST
 
 run_instance() {
-    # Wait a minimum of 90 seconds between runs; in the meantime, setup and start next testnet.
+    # Wait a minimum of T seconds between runs; in the meantime, setup and start next testnet.
     sleep 90 & # sleep in background
     ./build/runner -f $MANIFEST -t DO setup --clean --le=false --keep-address-book
     ./build/runner -f $MANIFEST -t DO start
+    echo Waiting...
     wait # until sleeping has finished
     
     # Keep laptop awake while loading (only MacOS)
@@ -39,6 +43,8 @@ run_instance() {
     sleep 30 && gtimeout $TEST_DURATION ./build/runner -f $MANIFEST -t DO perturb &
     
     # load txs from CC
+    echo Loading transactions during $TEST_DURATION seconds...
+    ssh_cc ./build/runner -f $MANIFEST -t DO load -r $LOAD -c $CONN -T $TEST_DURATION --internal-ip --duplicate-num-nodes=100 > /dev/null 2>&1 &
     ssh_cc ./build/runner -f $MANIFEST -t DO load -r $LOAD -c $CONN -T $TEST_DURATION --internal-ip
     
     ./build/runner -f $MANIFEST -t DO stop

@@ -14,39 +14,16 @@ config = [
 	# Allow sending big txs via websockets.
 	# "p2p.max_body_bytes = 2097152",
 	# "p2p.max_header_bytes = 2097152",
+	
+	# "p2p.max_num_inbound_peers = 5", # 40
+	# "p2p.max_num_outbound_peers = 5", # 10
 
 	# "mempool.enable_dog_protocol = true",
-	# "mempool.target_redundancy = 1",
+	# "mempool.target_redundancy = 0.5",
     # "mempool.target_redundancy_delta = .2",
 	# "mempool.adjust_redundancy_interval = 1000ms",
 ]
 
-[node.seed0]
-mode = "seed"
-persistent_peers = ["seed1", "seed2", "seed3", "seed4"]
-zone = "N_Virginia"
-perturb = ["kill"]
-[node.seed1]
-mode = "seed"
-persistent_peers = ["seed0", "seed2", "seed3", "seed4"]
-zone = "Canada"
-perturb = ["kill"]
-[node.seed2]
-mode = "seed"
-persistent_peers = ["seed1", "seed0", "seed3", "seed4"]
-zone = "N_California"
-perturb = ["kill"]
-[node.seed3]
-mode = "seed"
-persistent_peers = ["seed1", "seed2", "seed0", "seed4"]
-zone = "London"
-perturb = ["kill"]
-[node.seed4]
-mode = "seed"
-persistent_peers = ["seed1", "seed2", "seed3", "seed0"]
-zone = "Oregon"
-
-perturb = ["kill"]
 [node.full00]
 mode = "full"
 seeds = ["seed0"]
@@ -848,3 +825,39 @@ perturb = ["kill"]
 seeds = ["seed4"]
 zone = "Oregon"
 perturb = ["kill"]
+
+[node.seed0]
+mode = "seed"
+persistent_peers = ["seed1", "seed2", "seed3", "seed4"]
+zone = "N_Virginia"
+# perturb = ["kill"]
+send_no_load = true
+config = ["mempool.type = nop"]
+[node.seed1]
+mode = "seed"
+persistent_peers = ["seed0", "seed2", "seed3", "seed4"]
+zone = "Canada"
+# perturb = ["kill"]
+send_no_load = true
+config = ["mempool.type = nop"]
+[node.seed2]
+mode = "seed"
+persistent_peers = ["seed1", "seed0", "seed3", "seed4"]
+zone = "N_California"
+# perturb = ["kill"]
+send_no_load = true
+config = ["mempool.type = nop"]
+[node.seed3]
+mode = "seed"
+persistent_peers = ["seed1", "seed2", "seed0", "seed4"]
+zone = "London"
+# perturb = ["kill"]
+send_no_load = true
+config = ["mempool.type = nop"]
+[node.seed4]
+mode = "seed"
+persistent_peers = ["seed1", "seed2", "seed3", "seed0"]
+zone = "Oregon"
+# perturb = ["kill"]
+send_no_load = true
+config = ["mempool.type = nop"]
