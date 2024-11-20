@@ -2217,7 +2217,8 @@ func (cs *State) addVote(vote *types.Vote, peerID p2p.ID) (added bool, err error
 		// TODO punish a peer if it sent a vote with an extension when the feature
 		// is disabled on the network.
 		// https://github.com/tendermint/tendermint/issues/8565
-		if len(vote.Extension) > 0 || len(vote.ExtensionSignature) > 0 {
+		if len(vote.Extension) > 0 || len(vote.ExtensionSignature) > 0 ||
+			len(vote.NonRpExtension) > 0 || len(vote.NonRpExtensionSignature) > 0 {
 			return false, fmt.Errorf("received vote with vote extension for height %v (extensions disabled) from peer ID %s", vote.Height, peerID)
 		}
 	}
