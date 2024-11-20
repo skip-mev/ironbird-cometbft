@@ -195,7 +195,8 @@ func (vote *Vote) Copy() *Vote {
 // 7. first 6 bytes of block hash
 // 8. first 6 bytes of signature
 // 9. first 6 bytes of vote extension
-// 10. timestamp
+// 10. first 6 bytes of nrp vote extension
+// 11. timestamp
 func (vote *Vote) String() string {
 	if vote == nil {
 		return nilVoteStr
@@ -211,7 +212,7 @@ func (vote *Vote) String() string {
 		panic("Unknown vote type")
 	}
 
-	return fmt.Sprintf("Vote{%v:%X %v/%02d/%v(%v) %X %X %X @ %s}",
+	return fmt.Sprintf("Vote{%v:%X %v/%02d/%v(%v) %X %X %X %X @ %s}",
 		vote.ValidatorIndex,
 		cmtbytes.Fingerprint(vote.ValidatorAddress),
 		vote.Height,
@@ -221,6 +222,7 @@ func (vote *Vote) String() string {
 		cmtbytes.Fingerprint(vote.BlockID.Hash),
 		cmtbytes.Fingerprint(vote.Signature),
 		cmtbytes.Fingerprint(vote.Extension),
+		cmtbytes.Fingerprint(vote.NonRpExtension),
 		CanonicalTime(vote.Timestamp),
 	)
 }
@@ -337,13 +339,13 @@ func (vote *Vote) ValidateBasic() error {
 	// this is a violation of the specification.
 	// https://github.com/tendermint/tendermint/issues/8487
 	if vote.Type != cmtproto.PrecommitType || vote.BlockID.IsZero() {
-		if len(vote.Extension) > 0 {
+		if len(vote.Extension) > 0 || len(vote.NonRpExtension) > 0 {
 			return fmt.Errorf(
 				"unexpected vote extension; vote type %d, isNil %t",
 				vote.Type, vote.BlockID.IsZero(),
 			)
 		}
-		if len(vote.ExtensionSignature) > 0 {
+		if len(vote.ExtensionSignature) > 0 || len(vote.NonRpExtensionSignature) > 0 {
 			return errors.New("unexpected vote extension signature")
 		}
 	}

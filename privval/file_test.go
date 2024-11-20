@@ -376,6 +376,7 @@ func newVote(addr types.Address, idx int32, height int64, round int32,
 		Timestamp:        cmttime.Now(),
 		BlockID:          blockID,
 		Extension:        extension,
+		NonRpExtension:   extension, // same as Extension (not checked currently by tests [TODO])
 	}
 }
 
