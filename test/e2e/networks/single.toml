@@ -1,1 +1,2 @@
+prometheus = true
 [node.validator]

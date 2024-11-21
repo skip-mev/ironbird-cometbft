@@ -3,8 +3,6 @@ module github.com/cometbft/cometbft
 go 1.23.1
 
 require (
-	github.com/BurntSushi/toml v1.4.0
-	github.com/Masterminds/semver/v3 v3.3.0
 	github.com/adlio/schema v1.3.6
 	github.com/btcsuite/btcd/btcutil v1.1.6
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
@@ -26,7 +24,6 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/lmittmann/tint v1.0.5
 	github.com/minio/highwayhash v1.0.3
-	github.com/mitchellh/mapstructure v1.5.0
 	github.com/oasisprotocol/curve25519-voi v0.0.0-20220708102147-0a8a51822cae
 	github.com/ory/dockertest v3.3.5+incompatible
 	github.com/pelletier/go-toml/v2 v2.2.3

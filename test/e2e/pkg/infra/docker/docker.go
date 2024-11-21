@@ -3,11 +3,14 @@ package docker
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"text/template"
 
+	"github.com/cometbft/cometbft/libs/log"
 	e2e "github.com/cometbft/cometbft/test/e2e/pkg"
 	"github.com/cometbft/cometbft/test/e2e/pkg/exec"
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
@@ -22,9 +25,48 @@ type Provider struct {
 	infra.ProviderData
 }
 
+func (*Provider) InfraInit(_ context.Context) error {
+	return nil
+}
+
+func (*Provider) InfraCreate(_ context.Context, _ bool, _ bool) error {
+	return nil
+}
+
+func (*Provider) InfraCheck(_ context.Context) error {
+	return nil
+}
+
+func (p *Provider) Build(ctx context.Context, fast bool) error {
+	tag := "cometbft/e2e-node:local-version"
+	if fast {
+		p.Logger.Info("Compile node binary for slim Docker image")
+		if err := exec.CommandVerbose(ctx, "/bin/sh", "-c", "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/node ./node"); err != nil {
+			return err
+		}
+		p.Logger.Info("Build slim Docker image")
+		return ExecVerbose(ctx, "build", "--tag", tag, "-f", "docker/Dockerfile.fast", ".")
+	}
+
+	p.Logger.Info("Build node image")
+	return ExecVerbose(ctx, "build", "--tag", tag, "-f", "docker/Dockerfile", "../..")
+}
+
+func (p *Provider) Cleanup(_ context.Context, _ bool, _ bool) error {
+	err := p.cleanupDocker()
+	if err != nil {
+		return err
+	}
+	err = p.cleanupDir(p.DataDir)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // Setup generates the docker-compose file and write it to disk, erroring if
 // any of these operations fail.
-func (p *Provider) Setup() error {
+func (p *Provider) Setup(_ context.Context, _, _, _ bool) error {
 	compose, err := dockerComposeBytes(p.Testnet)
 	if err != nil {
 		return err
@@ -34,11 +76,10 @@ func (p *Provider) Setup() error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func (p Provider) StartNodes(ctx context.Context, nodes ...*e2e.Node) error {
+func (p Provider) StartNodes(ctx context.Context, _ bool, nodes ...*e2e.Node) error {
 	nodeNames := make([]string, len(nodes))
 	for i, n := range nodes {
 		nodeNames[i] = n.Name
@@ -46,16 +87,32 @@ func (p Provider) StartNodes(ctx context.Context, nodes ...*e2e.Node) error {
 	return ExecCompose(ctx, p.Testnet.Dir, append([]string{"up", "-d"}, nodeNames...)...)
 }
 
-func (p Provider) StopTestnet(ctx context.Context) error {
+func (p Provider) StopTestnet(ctx context.Context, _, _ bool) error {
 	return ExecCompose(ctx, p.Testnet.Dir, "down")
 }
 
-func (p Provider) Disconnect(ctx context.Context, name string, _ string) error {
-	return Exec(ctx, "network", "disconnect", p.Testnet.Name+"_"+p.Testnet.Name, name)
+func (p Provider) Disconnect(ctx context.Context, node *e2e.Node) error {
+	return Exec(ctx, "network", "disconnect", p.Testnet.Name+"_"+p.Testnet.Name, node.Name)
 }
 
-func (p Provider) Reconnect(ctx context.Context, name string, _ string) error {
-	return Exec(ctx, "network", "connect", p.Testnet.Name+"_"+p.Testnet.Name, name)
+func (p Provider) Reconnect(ctx context.Context, node *e2e.Node) error {
+	return Exec(ctx, "network", "connect", p.Testnet.Name+"_"+p.Testnet.Name, node.Name)
+}
+
+func (p Provider) Kill(ctx context.Context, node *e2e.Node) error {
+	return ExecCompose(context.Background(), p.DataDir, "kill", "-s", "SIGKILL", node.Name)
+}
+
+func (p Provider) Logs(ctx context.Context, tail bool, node *e2e.Node) error {
+	if node != nil {
+		if tail {
+			return ExecComposeVerbose(ctx, p.DataDir, "logs", "--follow", node.Name)
+		}
+		return ExecComposeVerbose(ctx, p.DataDir, "logs", node.Name)
+	} else if tail {
+		return ExecComposeVerbose(ctx, p.DataDir, "logs", "--follow")
+	}
+	return ExecComposeVerbose(ctx, p.DataDir, "logs")
 }
 
 func (Provider) CheckUpgraded(ctx context.Context, node *e2e.Node) (string, bool, error) {
@@ -75,6 +132,66 @@ func (Provider) CheckUpgraded(ctx context.Context, node *e2e.Node) (string, bool
 
 func (Provider) NodeIP(node *e2e.Node) net.IP {
 	return node.InternalIP
+}
+
+// cleanupDocker removes all E2E resources (with label e2e=True), regardless
+// of testnet.
+func (p Provider) cleanupDocker() error {
+	p.Logger.Info("Removing Docker containers and networks")
+
+	// GNU xargs requires the -r flag to not run when input is empty, macOS
+	// does this by default. Ugly, but works.
+	xargsR := `$(if [[ $OSTYPE == "linux-gnu"* ]]; then echo -n "-r"; fi)`
+
+	err := exec.Command(context.Background(), "bash", "-c", fmt.Sprintf(
+		"docker container ls -qa --filter label=e2e | xargs %v docker container rm -f", xargsR))
+	if err != nil {
+		return err
+	}
+
+	err = exec.Command(context.Background(), "bash", "-c", fmt.Sprintf(
+		"docker network ls -q --filter label=e2e | xargs %v docker network rm", xargsR))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// cleanupDir cleans up a testnet directory.
+func (p Provider) cleanupDir(dir string) error {
+	if dir == "" {
+		return errors.New("no directory set")
+	}
+
+	_, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	p.Logger.Info("cleanup dir", "msg", log.NewLazySprintf("Removing testnet directory %#q", dir))
+
+	// On Linux, some local files in the volume will be owned by root since CometBFT
+	// runs as root inside the container, so we need to clean them up from within a
+	// container running as root too.
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	err = Exec(context.Background(), "run", "--rm", "--entrypoint", "", "-v", fmt.Sprintf("%v:/network", absDir),
+		"cometbft/e2e-node:local-version", "sh", "-c", "rm -rf /network/*/")
+	if err != nil {
+		return err
+	}
+
+	err = os.RemoveAll(dir)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // dockerComposeBytes generates a Docker Compose config file for a testnet and returns the

@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -173,6 +174,9 @@ type Manifest struct {
 	// * An existing validator will be chosen, and its power will alternate between 0 and 1.
 	// * `ConsensusParams` will be flipping on and off key types not set at genesis.
 	ConstantFlip bool `toml:"constant_flip"`
+
+	// Data center region for all nodes.
+	Region string `toml:"default_region"`
 }
 
 // ManifestNode represents a node in a testnet manifest.
@@ -279,6 +283,9 @@ type ManifestNode struct {
 	// configuration files for this node. The format is "key = value".
 	// Example: "p2p.send_rate = 512000".
 	Config []string `toml:"config"`
+
+	// Data center region.
+	Region string `toml:"region"`
 }
 
 // Save saves the testnet manifest to a file.
@@ -298,4 +305,14 @@ func LoadManifest(file string) (Manifest, error) {
 		return manifest, fmt.Errorf("failed to load testnet manifest %q: %w", file, err)
 	}
 	return manifest, nil
+}
+
+func (m *Manifest) SortNodeNames() []string {
+	// Set up nodes, in alphabetical order (IPs and ports get same order).
+	nodeNames := []string{}
+	for name := range m.NodesMap {
+		nodeNames = append(nodeNames, name)
+	}
+	sort.Strings(nodeNames)
+	return nodeNames
 }

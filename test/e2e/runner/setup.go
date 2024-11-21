@@ -2,24 +2,23 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
-
-	_ "embed"
 
 	"github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -46,8 +45,10 @@ const (
 )
 
 // Setup sets up the testnet configuration.
-func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
+func Setup(ctx context.Context, testnet *e2e.Testnet, infp infra.Provider, clean, keepAddressBook, useInternalIP bool) error {
 	logger.Info("setup", "msg", log.NewLazySprintf("Generating testnet files in %#q", testnet.Dir))
+	startTime := time.Now()
+	defer func(t time.Time) { logger.Debug(fmt.Sprintf("Setup time: %s\n", time.Since(t))) }(startTime)
 
 	if err := os.MkdirAll(testnet.Dir, os.ModePerm); err != nil {
 		return err
@@ -122,7 +123,7 @@ func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
 		if testnet.LatencyEmulationEnabled {
 			// Generate a shell script file containing tc (traffic control) commands
 			// to emulate latency to other nodes.
-			tcCmds, err := tcCommands(node, infp)
+			tcCmds, err := tcCommands(node)
 			if err != nil {
 				return err
 			}
@@ -135,19 +136,19 @@ func Setup(testnet *e2e.Testnet, infp infra.Provider) error {
 	}
 
 	if testnet.Prometheus {
-		if err := WritePrometheusConfig(testnet, PrometheusConfigFile); err != nil {
+		if err := writePrometheusConfig(testnet, PrometheusConfigFile); err != nil {
 			return err
 		}
 		// Make a copy of the Prometheus config file in the testnet directory.
 		// This should be temporary to keep it compatible with the qa-infra
 		// repository.
-		if err := WritePrometheusConfig(testnet, filepath.Join(testnet.Dir, "prometheus.yml")); err != nil {
+		if err := writePrometheusConfig(testnet, filepath.Join(testnet.Dir, "prometheus.yml")); err != nil {
 			return err
 		}
 	}
 
 	//nolint: revive
-	if err := infp.Setup(); err != nil {
+	if err := infp.Setup(ctx, clean, keepAddressBook, useInternalIP); err != nil {
 		return err
 	}
 
@@ -386,7 +387,8 @@ func MakeConfig(node *e2e.Node) (*config.Config, error) {
 			if err != nil {
 				return nil, err
 			}
-			logger.Debug("Applying 'config' field", "node", node.Name, key, value)
+			// Too verbose on 200 nodes
+			// logger.Debug("Applying 'config' field", "node", node.Name, key, value)
 			v.Set(key, value)
 		}
 		err := v.Unmarshal(cfg, func(d *mapstructure.DecoderConfig) {
@@ -481,26 +483,6 @@ func MakeAppConfig(node *e2e.Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-//go:embed templates/prometheus-yml.tmpl
-var prometheusYamlTemplate string
-
-func WritePrometheusConfig(testnet *e2e.Testnet, path string) error {
-	tmpl, err := template.New("prometheus-yaml").Parse(prometheusYamlTemplate)
-	if err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, testnet)
-	if err != nil {
-		return err
-	}
-	err = os.WriteFile(path, buf.Bytes(), 0o644) //nolint:gosec
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // UpdateConfigStateSync updates the state sync config for a node.
 func UpdateConfigStateSync(node *e2e.Node, height int64, hash []byte) error {
 	cfgPath := filepath.Join(node.Testnet.Dir, node.Name, "config", "config.toml")
@@ -514,4 +496,31 @@ func UpdateConfigStateSync(node *e2e.Node, height int64, hash []byte) error {
 	bz = regexp.MustCompile(`(?m)^trust_height =.*`).ReplaceAll(bz, []byte(fmt.Sprintf(`trust_height = %v`, height)))
 	bz = regexp.MustCompile(`(?m)^trust_hash =.*`).ReplaceAll(bz, []byte(fmt.Sprintf(`trust_hash = "%X"`, hash)))
 	return os.WriteFile(cfgPath, bz, 0o644) //nolint:gosec
+}
+
+func writePrometheusConfig(testnet *e2e.Testnet, path string) error {
+	tmpl, err := template.New("prometheus-yaml").Parse(`
+global:
+  scrape_interval: 1s
+
+scrape_configs:
+{{- range .Nodes }}
+  - job_name: '{{ .Name }}'
+    static_configs:
+      - targets: ['{{ if .ExternalIP }}{{ .ExternalIP }}:26660{{ else }}localhost:{{ .PrometheusProxyPort }},'host.docker.internal:{{ .PrometheusProxyPort }}{{ end }}']
+{{end}}	
+`)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, testnet)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(path, buf.Bytes(), 0o644) //nolint:gosec
+	if err != nil {
+		return err
+	}
+	return nil
 }

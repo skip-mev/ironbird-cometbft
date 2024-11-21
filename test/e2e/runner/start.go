@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -11,10 +12,13 @@ import (
 	"github.com/cometbft/cometbft/test/e2e/pkg/infra"
 )
 
-func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
+func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider, useInternalIP bool) error {
 	if len(testnet.Nodes) == 0 {
 		return errors.New("no nodes in testnet")
 	}
+
+	startTime := time.Now()
+	defer func(t time.Time) { logger.Debug(fmt.Sprintf("Start time: %s\n", time.Since(t))) }(startTime)
 
 	// Nodes are already sorted by name. Sort them by name then startAt,
 	// which gives the overall order startAt, mode, name.
@@ -47,7 +51,7 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 		nodesAtZero = append(nodesAtZero, nodeQueue[0])
 		nodeQueue = nodeQueue[1:]
 	}
-	err := p.StartNodes(context.Background(), nodesAtZero...)
+	err := p.StartNodes(context.Background(), useInternalIP, nodesAtZero...)
 	if err != nil {
 		return err
 	}
@@ -111,7 +115,7 @@ func Start(ctx context.Context, testnet *e2e.Testnet, p infra.Provider) error {
 
 		logger.Info("Starting catch up node", "node", node.Name, "height", node.StartAt)
 
-		err := p.StartNodes(context.Background(), node)
+		err := p.StartNodes(context.Background(), useInternalIP, node)
 		if err != nil {
 			return err
 		}
