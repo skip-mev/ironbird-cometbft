@@ -173,11 +173,12 @@ message RequestExtendVote {
 // Verify the vote extension
 message RequestVerifyVoteExtension {
   // the hash of the block that this received vote corresponds to
-  bytes hash              = 1;
+  bytes hash                  = 1;
   // the validator that signed the vote extension
-  bytes validator_address = 2;
-  int64 height            = 3;
-  bytes vote_extension    = 4;
+  bytes validator_address     = 2;
+  int64 height                = 3;
+  bytes vote_extension        = 4;
+  bytes nrp_vote_extension    = 5;
 }
 
 message RequestFinalizeBlock {
