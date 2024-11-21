@@ -1568,6 +1568,7 @@ func TestExtendVoteCalledWhenEnabled(t *testing.T) {
 						ValidatorAddress: addr,
 						Height:           height,
 						VoteExtension:    []byte("extension"),
+						NrpVoteExtension: []byte("nrp extension"),
 					})
 				} else {
 					m.AssertNotCalled(t, "VerifyVoteExtension", mock.Anything, mock.Anything)
@@ -1642,6 +1643,7 @@ func TestVerifyVoteExtensionNotCalledOnAbsentPrecommit(t *testing.T) {
 		ValidatorAddress: addr,
 		Height:           height,
 		VoteExtension:    []byte("extension"),
+		NrpVoteExtension: []byte("nrp extension"),
 	})
 }
 

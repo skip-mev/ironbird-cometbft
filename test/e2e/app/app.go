@@ -513,16 +513,24 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 		panic(fmt.Errorf("received call to VerifyVoteExtension at height %d, when vote extensions are disabled", appHeight))
 	}
 	// We don't allow vote extensions to be optional
-	if len(req.VoteExtension) == 0 {
+	if len(req.VoteExtension) == 0 || len(req.NrpVoteExtension) == 0 {
 		app.logger.Error("received empty vote extension")
 		return &abci.ResponseVerifyVoteExtension{
 			Status: abci.ResponseVerifyVoteExtension_REJECT,
 		}, nil
 	}
 
-	num, err := parseVoteExtension(req.VoteExtension)
+	num_ve, err := parseVoteExtension(req.VoteExtension)
 	if err != nil {
 		app.logger.Error("failed to parse vote extension", "vote_extension", req.VoteExtension, "err", err)
+		return &abci.ResponseVerifyVoteExtension{
+			Status: abci.ResponseVerifyVoteExtension_REJECT,
+		}, nil
+	}
+
+	num_nrp, err := parseVoteExtension(req.NrpVoteExtension)
+	if err != nil {
+		app.logger.Error("failed to parse nrp vote extension", "vote_extension", req.NrpVoteExtension, "err", err)
 		return &abci.ResponseVerifyVoteExtension{
 			Status: abci.ResponseVerifyVoteExtension_REJECT,
 		}, nil
@@ -532,7 +540,9 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 		time.Sleep(app.cfg.VoteExtensionDelay)
 	}
 
-	app.logger.Info("verified vote extension value", "height", req.Height, "vote_extension", req.VoteExtension, "num", num)
+	app.logger.Info("verified vote extension value", "height", req.Height,
+		"vote_extension", req.VoteExtension, "num_ve", num_ve,
+		"nrp_vote_extension", req.NrpVoteExtension, "num_nrp_ve", num_nrp)
 	return &abci.ResponseVerifyVoteExtension{
 		Status: abci.ResponseVerifyVoteExtension_ACCEPT,
 	}, nil

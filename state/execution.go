@@ -359,6 +359,7 @@ func (blockExec *BlockExecutor) VerifyVoteExtension(ctx context.Context, vote *t
 		ValidatorAddress: vote.ValidatorAddress,
 		Height:           vote.Height,
 		VoteExtension:    vote.Extension,
+		NrpVoteExtension: vote.NonRpExtension,
 	}
 
 	resp, err := blockExec.proxyApp.VerifyVoteExtension(ctx, &req)
