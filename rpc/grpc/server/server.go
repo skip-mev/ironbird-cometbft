@@ -10,11 +10,13 @@ import (
 
 	pbblksvc "github.com/cometbft/cometbft/api/cometbft/services/block/v1"
 	pbblkressvc "github.com/cometbft/cometbft/api/cometbft/services/block_results/v1"
+	pbprunesvc "github.com/cometbft/cometbft/api/cometbft/services/pruning/v1"
 	pbversvc "github.com/cometbft/cometbft/api/cometbft/services/version/v1"
 	"github.com/cometbft/cometbft/libs/log"
 	grpcerr "github.com/cometbft/cometbft/rpc/grpc/errors"
 	blkressvc "github.com/cometbft/cometbft/rpc/grpc/server/services/blockresultservice"
 	blksvc "github.com/cometbft/cometbft/rpc/grpc/server/services/blockservice"
+	prunesvc "github.com/cometbft/cometbft/rpc/grpc/server/services/pruningservice"
 	versvc "github.com/cometbft/cometbft/rpc/grpc/server/services/versionservice"
 	"github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/store"
@@ -37,12 +39,18 @@ type config struct {
 	verSvc    pbversvc.VersionServiceServer
 	blkSvc    pbblksvc.BlockServiceServer
 	blkResSvc pbblkressvc.BlockResultsServiceServer
+	pruneSvc  pbprunesvc.PruningServiceServer
 }
 
 func New(cfg *config) (*Server, error) {
 	if cfg == nil {
 		errMsg := "could not create gRPC server because its configuration is missing"
 		return nil, errors.New(errMsg)
+	}
+
+	parts := strings.SplitN(cfg.listenAddr, "://", 2)
+	if len(parts) != 2 {
+		return nil, grpcerr.ErrInvalidRemoteAddress{Addr: cfg.listenAddr}
 	}
 
 	grpcSrv := grpc.NewServer()
@@ -60,9 +68,32 @@ func New(cfg *config) (*Server, error) {
 		cfg.logger.Debug("Registered block results service")
 	}
 
+	srv := &Server{
+		logger:  cfg.logger,
+		grpcSrv: grpcSrv,
+		network: parts[0],
+		address: parts[1],
+	}
+
+	return srv, nil
+}
+
+func NewPrivileged(cfg *config) (*Server, error) {
+	if cfg == nil {
+		errMsg := "could not create gRPC server because its configuration is missing"
+		return nil, errors.New(errMsg)
+	}
+
 	parts := strings.SplitN(cfg.listenAddr, "://", 2)
 	if len(parts) != 2 {
 		return nil, grpcerr.ErrInvalidRemoteAddress{Addr: cfg.listenAddr}
+	}
+
+	grpcSrv := grpc.NewServer()
+
+	if cfg.pruneSvc != nil {
+		pbprunesvc.RegisterPruningServiceServer(grpcSrv, cfg.pruneSvc)
+		cfg.logger.Debug("Registered pruning service")
 	}
 
 	srv := &Server{
@@ -97,6 +128,14 @@ func (s *Server) Serve() error {
 	return nil
 }
 
+func (s *Server) GracefulStop() {
+	s.grpcSrv.GracefulStop()
+}
+
+func (s *Server) Stop() {
+	s.grpcSrv.Stop()
+}
+
 //nolint:revive
 func NewConfig(l log.Logger, listenAddr string) *config {
 	return &config{
@@ -123,6 +162,11 @@ func (c *config) WithBlockResultsService(
 	stStore state.Store,
 ) *config {
 	c.blkResSvc = blkressvc.New(blkStore, stStore, c.logger)
+	return c
+}
+
+func (c *config) WithPruningService(pruner *state.Pruner) *config {
+	c.pruneSvc = prunesvc.New(pruner, c.logger)
 	return c
 }
 

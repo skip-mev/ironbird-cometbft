@@ -38,7 +38,6 @@ import (
 	"github.com/cometbft/cometbft/proxy"
 	rpccore "github.com/cometbft/cometbft/rpc/core"
 	grpcserver "github.com/cometbft/cometbft/rpc/grpc/server"
-	grpcprivserver "github.com/cometbft/cometbft/rpc/grpc/server/privileged"
 	rpcserver "github.com/cometbft/cometbft/rpc/jsonrpc/server"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/state/indexer"
@@ -91,8 +90,12 @@ type Node struct {
 	blockIndexer      indexer.BlockIndexer
 	indexerService    *txindex.IndexerService
 	grpcSrv           *grpcserver.Server
-	prometheusSrv     *http.Server
-	pprofSrv          *http.Server
+
+	// privileged gRPC server exposing pruning APIs
+	grpcPrivSrv *grpcserver.Server
+
+	prometheusSrv *http.Server
+	pprofSrv      *http.Server
 }
 
 type waitSyncP2PReactor interface {
@@ -702,6 +705,14 @@ func (n *Node) OnStop() {
 		}
 	}
 
+	if n.grpcSrv != nil {
+		n.grpcSrv.GracefulStop()
+	}
+
+	if n.grpcPrivSrv != nil {
+		n.grpcPrivSrv.GracefulStop()
+	}
+
 	if n.prometheusSrv != nil {
 		if err := n.prometheusSrv.Shutdown(context.Background()); err != nil {
 			// Error from closing listeners, or context timeout:
@@ -914,30 +925,33 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 			return listeners, fmt.Errorf("configuring gRPC server: %w", err)
 		}
 
-		n.grpcSrv = grpcSrv
-
 		if err := grpcSrv.Serve(); err != nil {
 			return listeners, fmt.Errorf("starting gRPC server: %w", err)
 		}
+
+		n.grpcSrv = grpcSrv
 	}
 
 	if n.config.GRPC.Privileged.ListenAddress != "" {
-		listener, err := grpcserver.Listen(n.config.GRPC.Privileged.ListenAddress)
-		if err != nil {
-			return nil, err
-		}
-		opts := []grpcprivserver.Option{
-			grpcprivserver.WithLogger(n.Logger),
-		}
+		var (
+			listenAddr = n.config.GRPC.Privileged.ListenAddress
+			srvCfg     = grpcserver.NewConfig(n.Logger, listenAddr)
+		)
 		if n.config.GRPC.Privileged.PruningService.Enabled {
-			opts = append(opts, grpcprivserver.WithPruningService(n.pruner, n.Logger))
+			srvCfg = srvCfg.WithPruningService(n.pruner)
 		}
-		go func() {
-			if err := grpcprivserver.Serve(listener, opts...); err != nil {
-				n.Logger.Error("Error starting privileged gRPC server", "err", err)
-			}
-		}()
-		listeners = append(listeners, listener)
+
+		grpcSrv, err := grpcserver.NewPrivileged(srvCfg)
+		if err != nil {
+			formatStr := "configuring privileged gRPC server: %w"
+			return listeners, fmt.Errorf(formatStr, err)
+		}
+
+		if err := grpcSrv.Serve(); err != nil {
+			return listeners, fmt.Errorf("starting privileged gRPC server: %w", err)
+		}
+
+		n.grpcPrivSrv = grpcSrv
 	}
 
 	return listeners, nil
