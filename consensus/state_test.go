@@ -1564,11 +1564,11 @@ func TestExtendVoteCalledWhenEnabled(t *testing.T) {
 				addr := pv.Address()
 				if testCase.enabled {
 					m.AssertCalled(t, "VerifyVoteExtension", context.TODO(), &abci.RequestVerifyVoteExtension{
-						Hash:             blockID.Hash,
-						ValidatorAddress: addr,
-						Height:           height,
-						VoteExtension:    []byte("extension"),
-						NrpVoteExtension: []byte("non_replay_protected_extension"),
+						Hash:               blockID.Hash,
+						ValidatorAddress:   addr,
+						Height:             height,
+						VoteExtension:      []byte("extension"),
+						NonRpVoteExtension: []byte("non_replay_protected_extension"),
 					})
 				} else {
 					m.AssertNotCalled(t, "VerifyVoteExtension", mock.Anything, mock.Anything)
@@ -1639,11 +1639,11 @@ func TestVerifyVoteExtensionNotCalledOnAbsentPrecommit(t *testing.T) {
 	addr = pv.Address()
 
 	m.AssertNotCalled(t, "VerifyVoteExtension", context.TODO(), &abci.RequestVerifyVoteExtension{
-		Hash:             blockID.Hash,
-		ValidatorAddress: addr,
-		Height:           height,
-		VoteExtension:    []byte("extension"),
-		NrpVoteExtension: []byte("non_replay_protected_extension"),
+		Hash:               blockID.Hash,
+		ValidatorAddress:   addr,
+		Height:             height,
+		VoteExtension:      []byte("extension"),
+		NonRpVoteExtension: []byte("non_replay_protected_extension"),
 	})
 }
 
@@ -1738,7 +1738,7 @@ func TestPrepareProposalReceivesVoteExtensions(t *testing.T) {
 	for i := range vss {
 		vote := &rpp.LocalLastCommit.Votes[i]
 		require.Equal(t, vote.VoteExtension, voteExtensions[i])
-		require.Equal(t, vote.NrpVoteExtension, nonRpVoteExtensions[i])
+		require.Equal(t, vote.NonRpVoteExtension, nonRpVoteExtensions[i])
 
 		require.NotZero(t, len(vote.ExtensionSignature))
 		cve := cmtproto.CanonicalVoteExtension{

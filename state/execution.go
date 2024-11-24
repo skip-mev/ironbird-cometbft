@@ -355,11 +355,11 @@ func (blockExec *BlockExecutor) ExtendVote(
 
 func (blockExec *BlockExecutor) VerifyVoteExtension(ctx context.Context, vote *types.Vote) error {
 	req := abci.RequestVerifyVoteExtension{
-		Hash:             vote.BlockID.Hash,
-		ValidatorAddress: vote.ValidatorAddress,
-		Height:           vote.Height,
-		VoteExtension:    vote.Extension,
-		NrpVoteExtension: vote.NonRpExtension,
+		Hash:               vote.BlockID.Hash,
+		ValidatorAddress:   vote.ValidatorAddress,
+		Height:             vote.Height,
+		VoteExtension:      vote.Extension,
+		NonRpVoteExtension: vote.NonRpExtension,
 	}
 
 	resp, err := blockExec.proxyApp.VerifyVoteExtension(ctx, &req)
@@ -552,12 +552,12 @@ func BuildExtendedCommitInfo(ec *types.ExtendedCommit, valSet *types.ValidatorSe
 		}
 
 		votes[i] = abci.ExtendedVoteInfo{
-			Validator:             types.TM2PB.Validator(val),
-			BlockIdFlag:           cmtproto.BlockIDFlag(ecs.BlockIDFlag),
-			VoteExtension:         ecs.Extension,
-			ExtensionSignature:    ecs.ExtensionSignature,
-			NrpVoteExtension:      ecs.NonRpExtension,
-			NrpExtensionSignature: ecs.NonRpExtensionSignature,
+			Validator:               types.TM2PB.Validator(val),
+			BlockIdFlag:             cmtproto.BlockIDFlag(ecs.BlockIDFlag),
+			VoteExtension:           ecs.Extension,
+			ExtensionSignature:      ecs.ExtensionSignature,
+			NonRpVoteExtension:      ecs.NonRpExtension,
+			NonRpExtensionSignature: ecs.NonRpExtensionSignature,
 		}
 	}
 

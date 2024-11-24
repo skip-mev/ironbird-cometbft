@@ -513,7 +513,7 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 		panic(fmt.Errorf("received call to VerifyVoteExtension at height %d, when vote extensions are disabled", appHeight))
 	}
 	// We don't allow vote extensions to be optional
-	if len(req.VoteExtension) == 0 || len(req.NrpVoteExtension) == 0 {
+	if len(req.VoteExtension) == 0 || len(req.NonRpVoteExtension) == 0 {
 		app.logger.Error("received empty vote extension")
 		return &abci.ResponseVerifyVoteExtension{
 			Status: abci.ResponseVerifyVoteExtension_REJECT,
@@ -528,9 +528,9 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 		}, nil
 	}
 
-	num_nrp, err := parseVoteExtension(req.NrpVoteExtension)
+	num_nrp, err := parseVoteExtension(req.NonRpVoteExtension)
 	if err != nil {
-		app.logger.Error("failed to parse nrp vote extension", "vote_extension", req.NrpVoteExtension, "err", err)
+		app.logger.Error("failed to parse nrp vote extension", "vote_extension", req.NonRpVoteExtension, "err", err)
 		return &abci.ResponseVerifyVoteExtension{
 			Status: abci.ResponseVerifyVoteExtension_REJECT,
 		}, nil
@@ -542,7 +542,7 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 
 	app.logger.Info("verified vote extension value", "height", req.Height,
 		"vote_extension", req.VoteExtension, "num_ve", num_ve,
-		"nrp_vote_extension", req.NrpVoteExtension, "num_nrp_ve", num_nrp)
+		"nrp_vote_extension", req.NonRpVoteExtension, "num_nrp_ve", num_nrp)
 	return &abci.ResponseVerifyVoteExtension{
 		Status: abci.ResponseVerifyVoteExtension_ACCEPT,
 	}, nil
@@ -730,7 +730,7 @@ func (app *Application) verifyAndSum(
 		if !pubKey.VerifySignature(extSignBytes, vote.ExtensionSignature) {
 			return 0, errors.New("received vote with invalid signature")
 		}
-		if !pubKey.VerifySignature(vote.NrpVoteExtension, vote.NrpExtensionSignature) {
+		if !pubKey.VerifySignature(vote.NonRpVoteExtension, vote.NonRpExtensionSignature) {
 			return 0, errors.New("received vote with invalid signature of nrp vote extension")
 		}
 
