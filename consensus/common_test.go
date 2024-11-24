@@ -92,7 +92,7 @@ func (vs *validatorStub) signVote(
 	hash []byte,
 	header types.PartSetHeader,
 	voteExtension []byte,
-	nrpVoteExtension []byte,
+	nonRpVoteExtension []byte,
 	extEnabled bool,
 ) (*types.Vote, error) {
 	pubKey, err := vs.PrivValidator.GetPubKey()
@@ -108,7 +108,7 @@ func (vs *validatorStub) signVote(
 		ValidatorAddress: pubKey.Address(),
 		ValidatorIndex:   vs.Index,
 		Extension:        voteExtension,
-		NonRpExtension:   nrpVoteExtension,
+		NonRpExtension:   nonRpVoteExtension,
 	}
 	v := vote.ToProto()
 	if err = vs.PrivValidator.SignVote(test.DefaultTestChainID, v); err != nil {
@@ -138,7 +138,7 @@ func (vs *validatorStub) signVote(
 
 // Sign vote for type/hash/header
 func signVote(vs *validatorStub, voteType cmtproto.SignedMsgType, hash []byte, header types.PartSetHeader, extEnabled bool) *types.Vote {
-	var ext, nrpExt []byte
+	var ext, nonRpExt []byte
 	// Only non-nil precommits are allowed to carry vote extensions.
 	if extEnabled {
 		if voteType != cmtproto.PrecommitType {
@@ -146,10 +146,10 @@ func signVote(vs *validatorStub, voteType cmtproto.SignedMsgType, hash []byte, h
 		}
 		if len(hash) != 0 || !header.IsZero() {
 			ext = []byte("extension")
-			nrpExt = []byte("nrp extension")
+			nonRpExt = []byte("non_replay_protected_extension")
 		}
 	}
-	v, err := vs.signVote(voteType, hash, header, ext, nrpExt, extEnabled)
+	v, err := vs.signVote(voteType, hash, header, ext, nonRpExt, extEnabled)
 
 	if err != nil {
 		panic(fmt.Errorf("failed to sign vote: %v", err))

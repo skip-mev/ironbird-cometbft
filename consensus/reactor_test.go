@@ -387,6 +387,8 @@ func TestSwitchToConsensusVoteExtensions(t *testing.T) {
 			} else {
 				require.Nil(t, signedVote.Extension)
 				require.Nil(t, signedVote.ExtensionSignature)
+				require.Nil(t, signedVote.NonRpExtension)
+				require.Nil(t, signedVote.NonRpExtensionSignature)
 			}
 
 			added, err := voteSet.AddVote(signedVote)
