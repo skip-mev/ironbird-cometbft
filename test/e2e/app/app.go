@@ -373,7 +373,7 @@ func (app *Application) ApplySnapshotChunk(_ context.Context, req *abci.RequestA
 //
 // Additionally, we verify the vote extension signatures passed from CometBFT and
 // include all data necessary for such verification in the special transaction's
-// payload so that ProcessProposal at other nodes can also 	verify the proposer
+// payload so that ProcessProposal at other nodes can also verify the proposer
 // constructed the special transaction correctly.
 //
 // If vote extensions are enabled for the current height, PrepareProposal makes
@@ -497,10 +497,12 @@ func (app *Application) ExtendVote(_ context.Context, req *abci.RequestExtendVot
 		time.Sleep(app.cfg.VoteExtensionDelay)
 	}
 
-	app.logger.Info("generated vote extension", "num", num, "ext", fmt.Sprintf("%x", ext[:extLen]), "height", appHeight)
+	ext = ext[:extLen]
+	nonRpExt := fmt.Sprintf("%d|%x", req.Height, ext) // We include the height as a basic replay protection mechanism
+	app.logger.Info("generated vote extension", "num", num, "ext", fmt.Sprintf("%x", ext), "height", appHeight, "nonRpExt", nonRpExt)
 	return &abci.ResponseExtendVote{
-		VoteExtension:  ext[:extLen],
-		NonRpExtension: []byte("some non-rp extension"),
+		VoteExtension:  ext,
+		NonRpExtension: []byte(nonRpExt),
 	}, nil
 }
 
@@ -514,23 +516,15 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 	}
 	// We don't allow vote extensions to be optional
 	if len(req.VoteExtension) == 0 || len(req.NonRpVoteExtension) == 0 {
-		app.logger.Error("received empty vote extension")
+		app.logger.Error("received empty vote extension or empty non replay protected vote extension")
 		return &abci.ResponseVerifyVoteExtension{
 			Status: abci.ResponseVerifyVoteExtension_REJECT,
 		}, nil
 	}
 
-	num_ve, err := parseVoteExtension(req.VoteExtension)
+	numVe, err := parseVoteExtensions(req.Height, req.VoteExtension, req.NonRpVoteExtension)
 	if err != nil {
 		app.logger.Error("failed to parse vote extension", "vote_extension", req.VoteExtension, "err", err)
-		return &abci.ResponseVerifyVoteExtension{
-			Status: abci.ResponseVerifyVoteExtension_REJECT,
-		}, nil
-	}
-
-	num_nrp, err := parseVoteExtension(req.NonRpVoteExtension)
-	if err != nil {
-		app.logger.Error("failed to parse nrp vote extension", "vote_extension", req.NonRpVoteExtension, "err", err)
 		return &abci.ResponseVerifyVoteExtension{
 			Status: abci.ResponseVerifyVoteExtension_REJECT,
 		}, nil
@@ -541,8 +535,9 @@ func (app *Application) VerifyVoteExtension(_ context.Context, req *abci.Request
 	}
 
 	app.logger.Info("verified vote extension value", "height", req.Height,
-		"vote_extension", req.VoteExtension, "num_ve", num_ve,
-		"nrp_vote_extension", req.NonRpVoteExtension, "num_nrp_ve", num_nrp)
+		"vote_extension", req.VoteExtension, "numVe", numVe,
+		"non_replay_protected_ve", req.NonRpVoteExtension,
+	)
 	return &abci.ResponseVerifyVoteExtension{
 		Status: abci.ResponseVerifyVoteExtension_ACCEPT,
 	}, nil
@@ -734,7 +729,7 @@ func (app *Application) verifyAndSum(
 			return 0, errors.New("received vote with invalid signature of nrp vote extension")
 		}
 
-		extValue, err := parseVoteExtension(vote.VoteExtension)
+		extValue, err := parseVoteExtensions(currentHeight-1, vote.VoteExtension, vote.NonRpVoteExtension)
 		// The extension's format should have been verified in VerifyVoteExtension
 		if err != nil {
 			return 0, fmt.Errorf("failed to parse vote extension: %w", err)
@@ -799,9 +794,9 @@ func (app *Application) verifyExtensionTx(height int64, payload string) error {
 	return nil
 }
 
-// parseVoteExtension attempts to parse the given extension data into a positive
-// integer value.
-func parseVoteExtension(ext []byte) (int64, error) {
+// parseVoteExtensions attempts to parse the given extension data into a positive
+// integer value. It also checks the non replay protected extension: its height and its data.
+func parseVoteExtensions(expHeight int64, ext, nonRpExt []byte) (int64, error) {
 	num, errVal := binary.Varint(ext)
 	if errVal == 0 {
 		return 0, errors.New("vote extension is too small to parse")
@@ -812,5 +807,27 @@ func parseVoteExtension(ext []byte) (int64, error) {
 	if num >= voteExtensionMaxVal {
 		return 0, fmt.Errorf("vote extension value must be smaller than %d (was %d)", voteExtensionMaxVal, num)
 	}
+	parts := strings.Split(string(nonRpExt), "|")
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("non replay protected vote extension must have 2 parts (%d)", len(parts))
+	}
+	height, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if height != expHeight {
+		return 0, fmt.Errorf("non replay protected vote extension contains incorrect height (%d!=%d), risk of replay attack",
+			expHeight,
+			height,
+		)
+	}
+	xExt := fmt.Sprintf("%x", ext)
+	if parts[1] != xExt {
+		return 0, fmt.Errorf("non replay protected vote extension contains incorrect data (%s!=%s)",
+			xExt,
+			parts[1],
+		)
+	}
+
 	return num, nil
 }
