@@ -594,13 +594,13 @@ func (rc *redundancyControl) controlLoop(memR *Reactor) {
 			memR.mempool.metrics.FirstTimeTxs.Set(float64(rc.firstTimeTxs))
 			memR.mempool.metrics.DuplicateTxs.Set(float64(rc.duplicateTxs))
 
-			// Compute current redundancy level and reset transaction counters.
-			redundancy := rc.currentRedundancy()
-			if redundancy == 0 {
-				// There were no transactions in the last iteration. Do not send
-				// Reset messages; keep the current set of disabled routes.
+			if rc.firstTimeTxs+rc.duplicateTxs == 0 {
+				// There were no transactions in the last iteration. Do not adjust.
 				continue
 			}
+
+			// Compute current redundancy level and reset transaction counters.
+			redundancy := rc.currentRedundancy()
 
 			// Update metrics.
 			memR.mempool.metrics.Redundancy.Set(redundancy)
@@ -625,12 +625,14 @@ func (rc *redundancyControl) controlLoop(memR *Reactor) {
 	}
 }
 
-// currentRedundancy returns the current redundancy level and it resets the counters.
+// currentRedundancy returns the current redundancy level and resets the
+// counters. If firstTimeTxs is 0, return upperBound. If duplicateTxs is 0,
+// return 0.
 func (rc *redundancyControl) currentRedundancy() float64 {
 	rc.mtx.Lock()
 	defer rc.mtx.Unlock()
 
-	var redundancy float64
+	redundancy := rc.upperBound
 	if rc.firstTimeTxs != 0 {
 		redundancy = float64(rc.duplicateTxs) / float64(rc.firstTimeTxs)
 	}
