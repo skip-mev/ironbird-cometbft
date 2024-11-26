@@ -29,7 +29,7 @@ const (
 	infraTypeDO           = "DO"
 )
 
-var logger = log.NewLogger(os.Stdout)
+var logger = log.NewLoggerWithColor(os.Stdout, false)
 
 func main() {
 	NewCLI().Run()
