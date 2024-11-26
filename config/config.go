@@ -1053,6 +1053,9 @@ func (cfg *MempoolConfig) ValidateBasic() error {
 	if cfg.MaxTxBytes < 0 {
 		return cmterrors.ErrNegativeField{Field: "max_tx_bytes"}
 	}
+	if cfg.TargetRedundancy <= 0 {
+		return cmterrors.ErrNegativeOrZeroField{Field: "target_redundancy"}
+	}
 	if cfg.ExperimentalMaxGossipConnectionsToPersistentPeers < 0 {
 		return cmterrors.ErrNegativeField{Field: "experimental_max_gossip_connections_to_persistent_peers"}
 	}
