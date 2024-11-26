@@ -25,8 +25,9 @@ type DBContext struct {
 // DBProvider takes a DBContext and returns an instantiated DB.
 type DBProvider func(*DBContext) (storage.DB, error)
 
-// DefaultDBProvider returns a database using the DBBackend and DBDir
-// specified in the Config.
+// DefaultDBProvider returns a database implementing the [storage.DB] interface.
+// The database's files will live in the DBDir specified in the Config.
+// Under the hood, it uses pebble as database.
 func DefaultDBProvider(ctx *DBContext) (storage.DB, error) {
 	var (
 		dbName = ctx.ID
