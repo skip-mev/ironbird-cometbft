@@ -283,3 +283,5 @@ runcmd:
 # Enable Prometheus metrics for this host
   - systemctl enable prometheus-node-exporter
   - systemctl start prometheus-node-exporter
+# Indicate server services are fully installed.
+  - ln /etc/done /etc/cc
