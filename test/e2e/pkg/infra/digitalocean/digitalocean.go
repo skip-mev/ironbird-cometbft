@@ -69,6 +69,7 @@ func (p *Provider) InfraCheck(ctx context.Context) error {
 	if err := p.Terraform.SetCCIP(ctx); err != nil {
 		return err
 	}
+	p.Logger.Info("CC server: %s\n", p.Terraform.CCIP)
 	if err := ssh(ctx, p.Terraform.CCIP, "cat /etc/cc"); err != nil {
 		return err
 	}
@@ -228,7 +229,7 @@ func (*Provider) Disconnect(ctx context.Context, node *e2e.Node) error {
 		"iptables -A INPUT -p tcp --dport 26656 -j DROP",
 		"iptables -A OUTPUT -p tcp --dport 26656 -j DROP",
 	}
-	return pssh(ctx, []string{node.ExternalIP.String()}, strings.Join(cmds, " && "))
+	return ssh(ctx, node.ExternalIP.String(), strings.Join(cmds, " && "))
 }
 
 func (*Provider) Reconnect(ctx context.Context, node *e2e.Node) error {
@@ -236,7 +237,7 @@ func (*Provider) Reconnect(ctx context.Context, node *e2e.Node) error {
 		"iptables -D INPUT -p tcp --dport 26656 -j DROP",
 		"iptables -D OUTPUT -p tcp --dport 26656 -j DROP",
 	}
-	return pssh(ctx, []string{node.ExternalIP.String()}, strings.Join(cmds, " && "))
+	return ssh(ctx, node.ExternalIP.String(), strings.Join(cmds, " && "))
 }
 
 func (p *Provider) Kill(ctx context.Context, node *e2e.Node) error {
@@ -290,7 +291,7 @@ func psshCmd(ips []string, cmd string) string {
 
 func pssh(ctx context.Context, ips []string, cmd string) error {
 	if err := exec.Command(ctx, "/bin/sh", "-c", psshCmd(ips, cmd)); err != nil {
-		return fmt.Errorf("pssh failed: %w", err)
+		return fmt.Errorf("pssh failed: %w (maybe \"too many files open\"?)", err)
 	}
 	return nil
 }
