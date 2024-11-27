@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	"github.com/cometbft/cometbft/crypto/tmhash"
+	"github.com/cometbft/cometbft/internal/storage"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	mpmocks "github.com/cometbft/cometbft/mempool/mocks"
@@ -51,7 +51,9 @@ func TestValidateBlockHeader(t *testing.T) {
 		mock.Anything,
 		mock.Anything).Return(nil)
 
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockStoreDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
@@ -128,8 +130,10 @@ func TestValidateBlockHeader(t *testing.T) {
 
 	nextHeight := validationTestsStopHeight
 	block := makeBlock(state, nextHeight, lastCommit)
+
 	state.InitialHeight = nextHeight + 1
-	err := blockExec.ValidateBlock(state, block)
+
+	err = blockExec.ValidateBlock(state, block)
 	require.Error(t, err, "expected an error when state is ahead of block")
 	assert.Contains(t, err.Error(), "lower than initial height")
 }
@@ -156,7 +160,10 @@ func TestValidateBlockCommit(t *testing.T) {
 		mock.Anything,
 		mock.Anything).Return(nil)
 
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
+	blockStoreDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
@@ -309,7 +316,11 @@ func TestValidateBlockEvidence(t *testing.T) {
 		mock.Anything,
 		mock.Anything).Return(nil)
 	state.ConsensusParams.Evidence.MaxBytes = 1000
-	blockStore := store.NewBlockStore(dbm.NewMemDB())
+
+	blockStoreDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
+	blockStore := store.NewBlockStore(blockStoreDB)
 
 	blockExec := sm.NewBlockExecutor(
 		stateStore,
