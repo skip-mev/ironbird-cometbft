@@ -12,6 +12,7 @@ import (
 
 	db "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cometbft/cometbft/internal/storage"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cometbft/cometbft/libs/pubsub/query"
@@ -152,8 +153,11 @@ func containsAllTxs(results []*abci.TxResult, txs []string) bool {
 	return true
 }
 
-func createTestSetup(t *testing.T) (*sm.Pruner, *kv.TxIndex, blockidxkv.BlockerIndexer) {
+func createTestSetup(
+	t *testing.T,
+) (*sm.Pruner, *kv.TxIndex, blockidxkv.BlockerIndexer) {
 	t.Helper()
+
 	config := test.ResetTestRoot("pruner_test")
 	t.Cleanup(func() {
 		err := os.RemoveAll(config.RootDir)
@@ -161,6 +165,7 @@ func createTestSetup(t *testing.T) (*sm.Pruner, *kv.TxIndex, blockidxkv.BlockerI
 			t.Error(err)
 		}
 	})
+
 	// event bus
 	eventBus := types.NewEventBus()
 	eventBus.SetLogger(log.TestingLogger())
@@ -171,22 +176,28 @@ func createTestSetup(t *testing.T) (*sm.Pruner, *kv.TxIndex, blockidxkv.BlockerI
 		if err := eventBus.Stop(); err != nil {
 			t.Error(err)
 		}
-		err := os.RemoveAll(config.RootDir)
-		if err != nil {
+		if err := os.RemoveAll(config.RootDir); err != nil {
 			t.Error(err)
 		}
 	})
 
 	// tx indexer
-	memDB := db.NewMemDB()
+	memDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
 	txIndexer := kv.NewTxIndex(memDB)
 	blockIndexer := blockidxkv.New(db.NewPrefixDB(memDB, []byte("block_events")))
 
-	blockDB := db.NewMemDB()
-	stateDB := db.NewMemDB()
+	blockDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
+	stateDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: false,
 	})
+
 	bs := store.NewBlockStore(blockDB)
 	pruner := sm.NewPruner(stateStore, bs, blockIndexer, txIndexer, log.TestingLogger())
 
