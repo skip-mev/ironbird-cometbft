@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtstate "github.com/cometbft/cometbft/api/cometbft/state/v1"
 	cfg "github.com/cometbft/cometbft/config"
 	"github.com/cometbft/cometbft/crypto/ed25519"
+	"github.com/cometbft/cometbft/internal/storage"
 	"github.com/cometbft/cometbft/internal/test"
 	"github.com/cometbft/cometbft/libs/log"
 	sm "github.com/cometbft/cometbft/state"
@@ -25,7 +25,9 @@ import (
 )
 
 func TestStoreLoadValidators(t *testing.T) {
-	stateDB := dbm.NewMemDB()
+	stateDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
 	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
 		DiscardABCIResponses: false,
 		DBKeyLayout:          "v2",
@@ -34,7 +36,7 @@ func TestStoreLoadValidators(t *testing.T) {
 	vals := types.NewValidatorSet([]*types.Validator{val})
 
 	// 1) LoadValidators loads validators using a height where they were last changed
-	err := sm.SaveValidatorsInfo(stateDB, 1, 1, vals, "v2")
+	err = sm.SaveValidatorsInfo(stateDB, 1, 1, vals, "v2")
 	require.NoError(t, err)
 
 	// The store was initialized with v2 so we cannot find a validator using the representation
@@ -67,15 +69,14 @@ func BenchmarkLoadValidators(b *testing.B) {
 	config := test.ResetTestRoot("state_")
 	defer os.RemoveAll(config.RootDir)
 
-	dbType := dbm.BackendType(config.DBBackend)
-
-	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	stateDB, err := storage.NewDB("state", config.DBDir())
 	require.NoError(b, err)
 
-	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+	storeOpts := sm.StoreOptions{
 		DiscardABCIResponses: false,
 		DBKeyLayout:          "v2",
-	})
+	}
+	stateStore := sm.NewStore(stateDB, storeOpts)
 
 	state, err := stateStore.LoadFromDBOrGenesisFile(config.GenesisFile())
 	if err != nil {
@@ -143,15 +144,22 @@ func TestPruneStates(t *testing.T) {
 	}
 	for name, tc := range testcases {
 		t.Run(name, func(t *testing.T) {
-			db := dbm.NewMemDB()
-			stateStore := sm.NewStore(db, sm.StoreOptions{
+			db, err := storage.NewMemDB()
+			require.NoError(t, err)
+
+			storeOpts := sm.StoreOptions{
 				DiscardABCIResponses: false,
-			})
+			}
+			stateStore := sm.NewStore(db, storeOpts)
 			pk := ed25519.GenPrivKey().PubKey()
 
-			// Generate a bunch of state data. Validators change for heights ending with 3, and
-			// parameters when ending with 5.
-			validator := &types.Validator{Address: pk.Address(), VotingPower: 100, PubKey: pk}
+			// Generate a bunch of state data. Validators change for heights ending
+			// with 3, and parameters when ending with 5.
+			validator := &types.Validator{
+				Address:     pk.Address(),
+				VotingPower: 100,
+				PubKey:      pk,
+			}
 			validatorSet := &types.ValidatorSet{
 				Validators: []*types.Validator{validator},
 				Proposer:   validator,
@@ -198,7 +206,12 @@ func TestPruneStates(t *testing.T) {
 			}
 
 			// Test assertions
-			_, err := stateStore.PruneStates(tc.pruneFrom, tc.pruneTo, tc.evidenceThresholdHeight, 0)
+			_, err = stateStore.PruneStates(
+				tc.pruneFrom,
+				tc.pruneTo,
+				tc.evidenceThresholdHeight,
+				0,
+			)
 			if tc.expectErr {
 				require.Error(t, err)
 				return
@@ -267,24 +280,49 @@ func sliceToMap(s []int64) map[int64]bool {
 	return m
 }
 
-func makeStateAndBlockStoreAndIndexers() (sm.State, *store.BlockStore, txindex.TxIndexer, indexer.BlockIndexer, func(), sm.Store) {
+func makeStateAndBlockStoreAndIndexers() (
+	sm.State,
+	*store.BlockStore,
+	txindex.TxIndexer,
+	indexer.BlockIndexer,
+	func(),
+	sm.Store,
+) {
 	config := test.ResetTestRoot("blockchain_reactor_test")
-	blockDB := dbm.NewMemDB()
-	stateDB := dbm.NewMemDB()
-	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+
+	blockDB, err := storage.NewMemDB()
+	if err != nil {
+		panic(err)
+	}
+
+	stateDB, err := storage.NewMemDB()
+	if err != nil {
+		panic(err)
+	}
+
+	storeOpts := sm.StoreOptions{
 		DiscardABCIResponses: false,
-	})
+	}
+	stateStore := sm.NewStore(stateDB, storeOpts)
 	state, err := sm.MakeGenesisStateFromFile(config.GenesisFile())
 	if err != nil {
 		panic("error constructing state from genesis file: " + err.Error())
 	}
 
-	txIndexer, blockIndexer, _, err := block.IndexerFromConfig(config, cfg.DefaultDBProvider, "test")
+	txIndexer, blockIndexer, _, err := block.IndexerFromConfig(
+		config,
+		cfg.DefaultDBProvider,
+		"test",
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	return state, store.NewBlockStore(blockDB), txIndexer, blockIndexer, func() { os.RemoveAll(config.RootDir) }, stateStore
+	return state,
+		store.NewBlockStore(blockDB),
+		txIndexer, blockIndexer,
+		func() { os.RemoveAll(config.RootDir) },
+		stateStore
 }
 
 func initStateStoreRetainHeights(stateStore sm.Store) error {
@@ -375,10 +413,13 @@ func TestMinRetainHeight(t *testing.T) {
 }
 
 func TestABCIResPruningStandalone(t *testing.T) {
-	stateDB := dbm.NewMemDB()
-	stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+	stateDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
+	storeOpts := sm.StoreOptions{
 		DiscardABCIResponses: false,
-	})
+	}
+	stateStore := sm.NewStore(stateDB, storeOpts)
 
 	responses, err := stateStore.LoadFinalizeBlockResponse(1)
 	require.Error(t, err)
@@ -470,10 +511,14 @@ func (o *prunerObserver) PrunerPrunedBlocks(info *sm.BlocksPrunedInfo) {
 
 func TestFinalizeBlockResponsePruning(t *testing.T) {
 	t.Run("Persisting responses", func(t *testing.T) {
-		stateDB := dbm.NewMemDB()
-		stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		stateDB, err := storage.NewMemDB()
+		require.NoError(t, err)
+
+		storeOpts := sm.StoreOptions{
 			DiscardABCIResponses: false,
-		})
+		}
+		stateStore := sm.NewStore(stateDB, storeOpts)
+
 		responses, err := stateStore.LoadFinalizeBlockResponse(1)
 		require.Error(t, err)
 		require.Nil(t, responses)
@@ -528,10 +573,13 @@ func TestFinalizeBlockResponsePruning(t *testing.T) {
 
 func TestLastFinalizeBlockResponses(t *testing.T) {
 	t.Run("persisting responses", func(t *testing.T) {
-		stateDB := dbm.NewMemDB()
-		stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		stateDB, err := storage.NewMemDB()
+		require.NoError(t, err)
+
+		storeOpts := sm.StoreOptions{
 			DiscardABCIResponses: false,
-		})
+		}
+		stateStore := sm.NewStore(stateDB, storeOpts)
 
 		responses, err := stateStore.LoadFinalizeBlockResponse(1)
 		require.Error(t, err)
@@ -544,8 +592,13 @@ func TestLastFinalizeBlockResponses(t *testing.T) {
 			AppHash: make([]byte, 1),
 		}
 
-		stateDB = dbm.NewMemDB()
-		stateStore = sm.NewStore(stateDB, sm.StoreOptions{DiscardABCIResponses: false})
+		stateDB, err = storage.NewMemDB()
+		require.NoError(t, err)
+
+		storeOpts = sm.StoreOptions{
+			DiscardABCIResponses: false,
+		}
+		stateStore = sm.NewStore(stateDB, storeOpts)
 		height := int64(10)
 
 		// save the last abci response.
@@ -569,20 +622,22 @@ func TestLastFinalizeBlockResponses(t *testing.T) {
 	})
 
 	t.Run("not persisting responses", func(t *testing.T) {
-		stateDB := dbm.NewMemDB()
+		stateDB, err := storage.NewMemDB()
+		require.NoError(t, err)
+
 		height := int64(10)
 
-		response2 := &abci.FinalizeBlockResponse{
-			TxResults: []*abci.ExecTxResult{
-				{Code: 44, Data: []byte("Hello again"), Log: "????"},
-			},
+		txResults := []*abci.ExecTxResult{
+			{Code: 44, Data: []byte("Hello again"), Log: "????"},
 		}
+		response2 := &abci.FinalizeBlockResponse{TxResults: txResults}
 
-		stateStore := sm.NewStore(stateDB, sm.StoreOptions{
+		storeOpts := sm.StoreOptions{
 			DiscardABCIResponses: true,
-		})
+		}
+		stateStore := sm.NewStore(stateDB, storeOpts)
 
-		err := stateStore.SaveFinalizeBlockResponse(height+1, response2)
+		err = stateStore.SaveFinalizeBlockResponse(height+1, response2)
 		require.NoError(t, err)
 
 		// check to see if the response saved by calling the last response.
@@ -601,7 +656,6 @@ func TestFinalizeBlockRecoveryUsingLegacyABCIResponses(t *testing.T) {
 	var (
 		height              int64 = 10
 		lastABCIResponseKey       = []byte("lastABCIResponseKey")
-		memDB                     = dbm.NewMemDB()
 		cp                        = types.DefaultConsensusParams().ToProto()
 		legacyResp                = cmtstate.ABCIResponsesInfo{
 			LegacyAbciResponses: &cmtstate.LegacyABCIResponses{
@@ -630,6 +684,9 @@ func TestFinalizeBlockRecoveryUsingLegacyABCIResponses(t *testing.T) {
 			Height: height,
 		}
 	)
+	memDB, err := storage.NewMemDB()
+	require.NoError(t, err)
+
 	bz, err := legacyResp.Marshal()
 	require.NoError(t, err)
 	// should keep this in parity with state/store.go
