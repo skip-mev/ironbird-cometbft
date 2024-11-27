@@ -297,15 +297,6 @@ func (memR *Reactor) TryAddTx(tx types.Tx, sender p2p.Peer) (*abcicli.ReqRes, er
 	return reqRes, nil
 }
 
-func (memR *Reactor) SendReset(p p2p.Peer) {
-	ok := p.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.Reset{}})
-	if !ok {
-		memR.Logger.Error("Failed to send Reset message", "peer", p.ID())
-	} else {
-		memR.mempool.metrics.ResetMsgsSent.Add(1)
-	}
-}
-
 func (memR *Reactor) EnableInOutTxs() {
 	memR.Logger.Info("Enabling inbound and outbound transactions")
 	if !memR.waitSync.CompareAndSwap(true, false) {
@@ -605,12 +596,17 @@ func (rc *redundancyControl) controlLoop(memR *Reactor) {
 			// Update metrics.
 			memR.mempool.metrics.Redundancy.Set(redundancy)
 
-			// If redundancy level is low, ask peers for more txs.
+			// If redundancy level is low, ask a random peer for more transactions.
 			if redundancy < rc.lowerBound {
 				memR.Logger.Debug("TX redundancy BELOW lower limit: increase it (send Reset)", "redundancy", redundancy)
 				// Send Reset message to random peer.
 				randomPeer := memR.Switch.Peers().Random()
-				memR.SendReset(randomPeer)
+				ok := randomPeer.Send(p2p.Envelope{ChannelID: MempoolControlChannel, Message: &protomem.Reset{}})
+				if !ok {
+					memR.Logger.Error("Failed to send Reset message", "peer", randomPeer.ID())
+				} else {
+					memR.mempool.metrics.ResetMsgsSent.Add(1)
+				}
 			}
 
 			// If redundancy level is high, ask peers for less txs.
